@@ -50,54 +50,7 @@ function Chat({ onPageChange, wsRef }) {
     fetchHistory();
   }, []);
 
-  // Listen for wake word detection and other messages from backend via WebSocket
-  useEffect(() => {
-    const ws = wsRef?.current;
-    if (!ws) return;
-
-    const handleWebSocketMessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('📨 WebSocket message received:', data.type);
-        
-        if (data.type === 'wake_word_detected') {
-          console.log('✅ Wake word detected from backend:', data.message);
-          
-          // Only start recording if not already recording
-          if (!isRecordingRef.current && !wakeWordDetected) {
-            setWakeWordDetected(true);
-            setIsListeningActive(true);
-            
-            // Start recording immediately
-            console.log('🎙️ Starting recording after wake word detection...');
-            startRecording();
-          } else {
-            console.log('⚠️ Already recording or wake word already detected, ignoring');
-          }
-        } else if (data.type === 'automatic_task') {
-          setMessages(prev => [
-            ...prev,
-            { type: 'system', text: data.message }
-          ]);
-        }
-      } catch (e) {
-        console.error('Error handling websocket message:', e);
-      }
-    };
-
-    ws.addEventListener('message', handleWebSocketMessage);
-    
-    // Set listening as active (backend is always listening)
-    setIsListeningActive(true);
-    console.log('🎤 Listening for wake word via backend (pvporcupine)...');
-    
-    return () => {
-      ws.removeEventListener('message', handleWebSocketMessage);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsRef]);
-
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     if (isRecordingRef.current) {
       console.log('Already recording');
       return;
@@ -171,7 +124,54 @@ function Chat({ onPageChange, wsRef }) {
       isRecordingRef.current = false;
       setIsListeningActive(true); // Backend continues listening
     }
-  };
+  }, [wsRef, ttsEnabled, muted, onPageChange]);
+
+  // Listen for wake word detection and other messages from backend via WebSocket
+  useEffect(() => {
+    const ws = wsRef?.current;
+    if (!ws) return;
+
+    const handleWebSocketMessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('📨 WebSocket message received:', data.type);
+        
+        if (data.type === 'wake_word_detected') {
+          console.log('✅ Wake word detected from backend:', data.message);
+          
+          // Only start recording if not already recording
+          // Use ref instead of state for immediate check
+          if (!isRecordingRef.current) {
+            setWakeWordDetected(true);
+            setIsListeningActive(true);
+            
+            // Start recording immediately
+            console.log('🎙️ Starting recording after wake word detection...');
+            startRecording();
+          } else {
+            console.log('⚠️ Already recording, ignoring wake word');
+          }
+        } else if (data.type === 'automatic_task') {
+          setMessages(prev => [
+            ...prev,
+            { type: 'system', text: data.message }
+          ]);
+        }
+      } catch (e) {
+        console.error('Error handling websocket message:', e);
+      }
+    };
+
+    ws.addEventListener('message', handleWebSocketMessage);
+    
+    // Set listening as active (backend is always listening)
+    setIsListeningActive(true);
+    console.log('🎤 Listening for wake word via backend (pvporcupine)...');
+    
+    return () => {
+      ws.removeEventListener('message', handleWebSocketMessage);
+    };
+  }, [wsRef, startRecording]);
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
