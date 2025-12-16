@@ -1,0 +1,4 @@
+# This file helps Railway detect Python at the root level
+# Actual dependencies are in backend/requirements.txt
+# Railway will use nixpacks.toml to install from backend/requirements.txt
+

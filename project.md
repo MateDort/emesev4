@@ -66,7 +66,8 @@ local SQL Lite
 - First we will build out the local storage structure because the AI assisntant wont be as big but later we will use a hybrid approach with supabase as cloud (forever storage) and local SQL Lite (only for 72 hours storage) 
 
 Deployment:
--Vercel
+- Vercel - frontend
+- Railway - backend
 
 APIs:
 - LLM (Gemini, Claude later LLAMA as local and offline llm)
