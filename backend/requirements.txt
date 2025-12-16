@@ -1,0 +1,16 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
+google-generativeai>=0.8.5
+openai>=2.12.0
+elevenlabs==0.2.27
+requests==2.31.0
+sqlalchemy>=2.0.36
+apscheduler==3.10.4
+websockets==12.0
+python-multipart==0.0.6
+pydantic>=2.9.0
+schedule==1.2.0
+protobuf>=6.0.0  # Required for Python 3.14 compatibility (may show dependency warning but works)
+# pyttsx3==2.90  # Optional - uncomment if you want local TTS fallback (requires many macOS dependencies)
+
