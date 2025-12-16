@@ -164,21 +164,21 @@ Write a detailed, engaging article summary that someone could read to understand
         # Store articles as JSON
         articles_json = json.dumps(expanded_articles, indent=2)
         
-        # Create news entry with articles JSON
-        news = News(
-            date=target_date,
-            title=f"Daily News - {target_date}",
-            content=articles_json,  # Store as JSON
-            source_url="",  # Not used anymore, articles have individual URLs
-            topics=", ".join(topics)
-        )
-        
-        db.add(news)
-        db.commit()
-        db.refresh(news)
-        
-        return news
-        
+        try:
+            # Create news entry with articles JSON
+            news = News(
+                date=target_date,
+                title=f"Daily News - {target_date}",
+                content=articles_json,  # Store as JSON
+                source_url="",  # Not used anymore, articles have individual URLs
+                topics=", ".join(topics)
+            )
+            
+            db.add(news)
+            db.commit()
+            db.refresh(news)
+            
+            return news
         except Exception as e:
             db.rollback()
             raise Exception(f"Failed to create newsletter: {str(e)}")
