@@ -185,7 +185,10 @@ function Chat({ onPageChange, wsRef }) {
         const data = JSON.parse(event.data);
         console.log('📨 WebSocket message received:', data.type);
         
-        if (data.type === 'wake_word_detected') {
+        if (data.type === 'connection_established') {
+          console.log('✅', data.message);
+          setIsListeningActive(true);
+        } else if (data.type === 'wake_word_detected') {
           console.log('✅ Wake word detected from backend:', data.message);
           
           // Only start recording if not already recording

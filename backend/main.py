@@ -5,7 +5,7 @@ FastAPI server that handles all requests from the frontend
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
 import uvicorn
 from dotenv import load_dotenv
@@ -136,6 +136,14 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_connections.append(websocket)
     automatic_tasks.set_connections(active_connections)
+    
+    # Send welcome message to confirm connection and listening status
+    await websocket.send_json({
+        "type": "connection_established",
+        "message": "WebSocket connected and listening",
+        "status": "ready"
+    })
+    
     try:
         while True:
             data = await websocket.receive_json()
@@ -212,6 +220,11 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/")
 async def root():
     return {"message": "Emese API v0.4.1", "status": "running"}
+
+@app.get("/favicon.ico")
+async def favicon():
+    """Handle favicon requests to prevent 404 errors"""
+    return Response(status_code=204)  # No Content
 
 @app.get("/api/schedule")
 async def get_schedule(db = Depends(get_db)):
