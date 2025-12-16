@@ -25,7 +25,7 @@ function NewsPage() {
   };
 
   return (
-    <div className="container-fluid page-shell">
+    <div className="container-fluid page-shell" style={{ padding: '20px', overflowY: 'auto' }}>
       <div className="row">
         <div className="col-12">
           <div className="mb-4 d-flex justify-content-between align-items-center">
@@ -42,47 +42,144 @@ function NewsPage() {
             <div className="text-center">Loading news...</div>
           ) : news ? (
             <div
-              className="news-content aqua-card p-4 scroll-pane"
+              className="news-content"
               style={{
                 fontFamily: 'Georgia, serif',
-                maxWidth: '1000px',
-                margin: '0 auto',
-                maxHeight: '75vh'
+                width: '100%',
+                maxWidth: '100%',
+                padding: '40px 60px',
+                lineHeight: '1.8',
+                fontSize: '1.1rem',
+                color: 'var(--mac-ink)'
               }}
             >
-              <div className="text-center mb-4 pb-3" style={{ borderBottom: '1px solid var(--mac-border)' }}>
-                <h1 className="display-5 mb-1" style={{ color: 'var(--mac-accent)', fontFamily: 'serif' }}>
+              <div className="text-center mb-5 pb-4" style={{ borderBottom: '2px solid var(--mac-border)' }}>
+                <h1 className="display-4 mb-2" style={{ color: 'var(--mac-accent)', fontFamily: 'Georgia, serif', fontWeight: 'bold' }}>
                   Daily News
                 </h1>
-                <div className="text-muted">{new Date().toLocaleDateString()}</div>
+                <div className="text-muted" style={{ fontSize: '1.1rem' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
               </div>
               
-              <div
-                style={{
-                  columnCount: 2,
-                  columnGap: '2rem',
-                  lineHeight: '1.6'
-                }}
-              >
-                {news.content.split('\n\n').map((section, idx) => (
-                  <div key={idx} className="mb-3">
-                    {section.split('\n').map((line, lineIdx) => {
-                      if (line.trim().startsWith('#') || (line.trim().toUpperCase() === line.trim() && line.length > 20)) {
-                        return (
-                          <h3 key={lineIdx} className="mb-2" style={{ color: 'var(--mac-accent)' }}>
-                            {line.replace('#', '').trim()}
-                          </h3>
-                        );
-                      }
-                      return (
-                        <p key={lineIdx} className="mb-2">
-                          {line}
-                        </p>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
+              {news.format === 'json' && news.articles ? (
+                // New format: Display individual articles
+                <div
+                  style={{
+                    maxWidth: '1000px',
+                    margin: '0 auto'
+                  }}
+                >
+                  {news.articles.map((article, idx) => (
+                    <article
+                      key={idx}
+                      className="mb-5 pb-5"
+                      style={{
+                        borderBottom: idx < news.articles.length - 1 ? '1px solid var(--mac-border)' : 'none',
+                        paddingBottom: '2rem'
+                      }}
+                    >
+                      <h2
+                        className="mb-3"
+                        style={{
+                          color: 'var(--mac-accent)',
+                          fontFamily: 'Georgia, serif',
+                          fontSize: '1.8rem',
+                          fontWeight: 'bold',
+                          lineHeight: '1.3'
+                        }}
+                      >
+                        {article.title}
+                      </h2>
+                      
+                      <div
+                        className="mb-4"
+                        style={{
+                          textAlign: 'justify',
+                          fontSize: '1.15rem',
+                          lineHeight: '1.9',
+                          color: 'var(--mac-ink)'
+                        }}
+                      >
+                        {article.content.split('\n\n').map((paragraph, pIdx) => (
+                          <p key={pIdx} className="mb-3">
+                            {paragraph.trim()}
+                          </p>
+                        ))}
+                      </div>
+                      
+                      <div className="mt-4 pt-3 d-flex align-items-center gap-3" style={{ borderTop: '1px solid rgba(179, 195, 216, 0.3)' }}>
+                        <a
+                          href={article.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn mac-button"
+                          style={{
+                            color: 'var(--mac-accent)',
+                            fontWeight: '600',
+                            textDecoration: 'none',
+                            padding: '10px 20px',
+                            fontSize: '0.95rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <span>📰</span>
+                          <span>Read Full Article</span>
+                        </a>
+                        {article.source && article.source !== 'Unknown' && (
+                          <span className="text-muted" style={{ fontSize: '0.9rem' }}>
+                            Source: <strong>{article.source}</strong>
+                          </span>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                // Old format: Display as formatted text (backward compatibility)
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                    gap: '3rem',
+                    columnGap: '4rem',
+                    alignItems: 'start'
+                  }}
+                >
+                  {news.content.split('\n\n').map((section, idx) => (
+                    <div key={idx} className="mb-4" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                      {section.split('\n').map((line, lineIdx) => {
+                        const trimmedLine = line.trim();
+                        if (trimmedLine.startsWith('#') || (trimmedLine.toUpperCase() === trimmedLine && trimmedLine.length > 20 && !trimmedLine.includes('.'))) {
+                          return (
+                            <h2 
+                              key={lineIdx} 
+                              className="mb-3 mt-4" 
+                              style={{ 
+                                color: 'var(--mac-accent)', 
+                                fontFamily: 'Georgia, serif',
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold',
+                                lineHeight: '1.4'
+                              }}
+                            >
+                              {trimmedLine.replace(/^#+\s*/, '').trim()}
+                            </h2>
+                          );
+                        }
+                        if (trimmedLine) {
+                          return (
+                            <p key={lineIdx} className="mb-3" style={{ textAlign: 'justify', hyphens: 'auto' }}>
+                              {trimmedLine}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center">No news available for today.</div>

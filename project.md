@@ -95,3 +95,8 @@ how it Emese works:
 - it also constantly checks for any reminders set by itself or any automatic action going off
 - emese has voice and typing option as well
 - use elevenlabs for tts and local as fallback 
+
+
+Version 0.4.2
+updates:
+- 

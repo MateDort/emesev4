@@ -101,40 +101,83 @@ class NewsAgent:
         if len(articles) < 5:
             raise Exception("Not enough articles found")
         
-        # Format as newspaper style
-        prompt = f"""
-{self.parameters}
+        # Expand each article with longer content using LLM
+        expanded_articles = []
+        for article in articles:
+            try:
+                # Extract source domain from URL for display
+                source_url = article.get('link', '')
+                source_domain = 'Unknown'
+                if source_url:
+                    try:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(source_url)
+                        source_domain = parsed.netloc.replace('www.', '')
+                    except:
+                        pass
+                
+                # Create a longer summary/expansion of the article
+                expansion_prompt = f"""
+Based on this news article snippet, write a comprehensive article summary (3-4 paragraphs, approximately 300-400 words) that covers:
+- The main story and key details
+- Why this matters
+- Context and background information
+- Implications or next steps
 
-Create a newspaper-style newsletter with these articles:
-{json.dumps(articles, indent=2)}
+Article title: {article.get('title', '')}
+Article snippet: {article.get('snippet', '')}
+Source: {source_url}
 
-Format it like an old newspaper with:
-- Headlines
-- Article summaries
-- Clear sections
-- Professional newspaper layout
-
-Make it interesting and engaging while maintaining a newspaper aesthetic.
+Write a detailed, engaging article summary that someone could read to understand the full story. Make it informative, well-written, and comprehensive. Expand on the snippet to provide more context and details.
 """
+                expansion_response = self.model.generate_content(expansion_prompt)
+                expanded_content = expansion_response.text
+                
+                expanded_articles.append({
+                    "title": article.get('title', ''),
+                    "content": expanded_content,
+                    "source_url": source_url,
+                    "snippet": article.get('snippet', ''),
+                    "source": article.get('source', source_domain)  # Use Serper's source field or fallback to domain
+                })
+            except Exception as e:
+                print(f"Error expanding article {article.get('title', 'unknown')}: {e}")
+                # If expansion fails, use original snippet but make it longer
+                source_url = article.get('link', '')
+                source_domain = 'Unknown'
+                if source_url:
+                    try:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(source_url)
+                        source_domain = parsed.netloc.replace('www.', '')
+                    except:
+                        pass
+                
+                expanded_articles.append({
+                    "title": article.get('title', ''),
+                    "content": article.get('snippet', ''),
+                    "source_url": source_url,
+                    "snippet": article.get('snippet', ''),
+                    "source": article.get('source', source_domain)
+                })
         
-        try:
-            response = self.model.generate_content(prompt)
-            news_content = response.text
-            
-            # Create news entry
-            news = News(
-                date=target_date,
-                title=f"Daily News - {target_date}",
-                content=news_content,
-                source_url="",
-                topics=", ".join(topics)
-            )
-            
-            db.add(news)
-            db.commit()
-            db.refresh(news)
-            
-            return news
+        # Store articles as JSON
+        articles_json = json.dumps(expanded_articles, indent=2)
+        
+        # Create news entry with articles JSON
+        news = News(
+            date=target_date,
+            title=f"Daily News - {target_date}",
+            content=articles_json,  # Store as JSON
+            source_url="",  # Not used anymore, articles have individual URLs
+            topics=", ".join(topics)
+        )
+        
+        db.add(news)
+        db.commit()
+        db.refresh(news)
+        
+        return news
         
         except Exception as e:
             db.rollback()
@@ -146,12 +189,26 @@ Make it interesting and engaging while maintaining a newspaper aesthetic.
         news = db.query(News).filter(News.date == today).first()
         
         if news:
-            return {
-                "id": news.id,
-                "title": news.title,
-                "content": news.content,
-                "source_url": news.source_url,
-                "topics": news.topics
-            }
+            # Try to parse content as JSON (new format) or return as text (old format)
+            try:
+                articles = json.loads(news.content)
+                return {
+                    "id": news.id,
+                    "title": news.title,
+                    "articles": articles,  # Array of articles
+                    "content": news.content,  # Keep for backward compatibility
+                    "topics": news.topics,
+                    "format": "json"  # Indicate new format
+                }
+            except (json.JSONDecodeError, TypeError):
+                # Old format - return as text content
+                return {
+                    "id": news.id,
+                    "title": news.title,
+                    "content": news.content,
+                    "source_url": news.source_url,
+                    "topics": news.topics,
+                    "format": "text"  # Indicate old format
+                }
         return None
 
