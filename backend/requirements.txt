@@ -11,7 +11,7 @@ websockets==12.0
 python-multipart==0.0.6
 pydantic>=2.9.0
 schedule==1.2.0
-protobuf>=6.0.0  # Required for Python 3.14 compatibility (may show dependency warning but works)
+protobuf>=3.20.2,<6.0.0  # Compatible with google-generativeai (works with Python 3.12)
 python-dateutil>=2.8.2
 # pyttsx3==2.90  # Optional - uncomment if you want local TTS fallback (requires many macOS dependencies)
 
