@@ -8,6 +8,21 @@ import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+// Helper function to get WebSocket URL
+const getWebSocketURL = () => {
+  if (process.env.REACT_APP_API_URL) {
+    // Convert http/https to ws/wss
+    const apiUrl = process.env.REACT_APP_API_URL;
+    if (apiUrl.startsWith('https://')) {
+      return apiUrl.replace('https://', 'wss://') + '/ws';
+    } else if (apiUrl.startsWith('http://')) {
+      return apiUrl.replace('http://', 'ws://') + '/ws';
+    }
+  }
+  // Default to localhost for development
+  return 'ws://localhost:8000/ws';
+};
+
 function HomePage() {
   const [currentPage, setCurrentPage] = useState('home');
   const [schedule, setSchedule] = useState(null);
@@ -46,7 +61,8 @@ function HomePage() {
   }, []);
 
   const connectWebSocket = () => {
-    const ws = new WebSocket(`ws://localhost:8000/ws`);
+    const wsUrl = getWebSocketURL();
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
