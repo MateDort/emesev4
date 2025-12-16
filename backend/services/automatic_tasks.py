@@ -6,7 +6,7 @@ Handles scheduled automatic tasks (scheduling, study, news)
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, date
-from database.database import get_db
+from database.database import SessionLocal
 from agents.scheduling_agent import SchedulingAgent
 from agents.study_agent import StudyAgent
 from agents.news_agent import NewsAgent
@@ -30,8 +30,8 @@ class AutomaticTasks:
     
     def create_schedule(self):
         """Create daily schedule at 4am"""
+        db = SessionLocal()
         try:
-            db = next(get_db())
             self.scheduling_agent.create_daily_schedule(db)
             message = "Schedule done!"
             logger.info(message)
@@ -40,11 +40,13 @@ class AutomaticTasks:
             message = f"Schedule failed due to {str(e)}"
             logger.error(message)
             self._notify_connections(message)
+        finally:
+            db.close()
     
     def create_study(self):
         """Create daily study at 4:30am"""
+        db = SessionLocal()
         try:
-            db = next(get_db())
             self.study_agent.create_daily_study(db)
             message = "Study created!"
             logger.info(message)
@@ -53,11 +55,13 @@ class AutomaticTasks:
             message = f"Study creation failed due to {str(e)}"
             logger.error(message)
             self._notify_connections(message)
+        finally:
+            db.close()
     
     def create_newsletter(self):
         """Create daily newsletter at midnight"""
+        db = SessionLocal()
         try:
-            db = next(get_db())
             self.news_agent.create_daily_newsletter(db)
             message = "News letter created"
             logger.info(message)
@@ -66,6 +70,8 @@ class AutomaticTasks:
             message = f"News letter creation failed due to {str(e)}"
             logger.error(message)
             self._notify_connections(message)
+        finally:
+            db.close()
     
     def _notify_connections(self, message: str):
         """Notify all active WebSocket connections"""

@@ -53,14 +53,6 @@ function HomePage() {
       console.log('WebSocket connected');
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'automatic_task') {
-        // Show notification for automatic tasks
-        console.log('Automatic task:', data.message);
-      }
-    };
-
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
@@ -95,6 +87,8 @@ function HomePage() {
       navigate('/news');
     } else if (page === 'morning') {
       navigate('/morning');
+    } else if (page === 'notes') {
+      navigate('/notes');
     }
   };
 
@@ -103,23 +97,26 @@ function HomePage() {
   }
 
   return (
-    <div className="container-fluid vh-100 d-flex" style={{ backgroundColor: '#000000' }}>
-      {/* Left Side - Widgets and Time/Weather */}
-      <div className="col-3 d-flex flex-column border-end border-secondary">
-        {/* Widgets Section - Top Left */}
-        <div className="flex-grow-1 border-bottom border-secondary p-3">
-          <ScheduleWidget schedule={schedule} onOpenFullSchedule={() => {}} />
+    <div className="container-fluid page-shell vh-100">
+      <div className="row g-3 h-100">
+        {/* Left Side - Widgets and Time/Weather (2/3) */}
+        <div className="col-12 col-lg-8 d-flex flex-column gap-3 h-100">
+          <div className="glass-panel p-3 h-100 d-flex flex-column">
+            <div className="mb-3">
+              <ScheduleWidget schedule={schedule} onOpenFullSchedule={() => {}} />
+            </div>
+            <div className="mt-auto">
+              <TimeWeather time={time} weather={weather} />
+            </div>
+          </div>
         </div>
-        
-        {/* Time and Weather - Bottom Left */}
-        <div className="p-3">
-          <TimeWeather time={time} weather={weather} />
-        </div>
-      </div>
 
-      {/* Right Side - Chat */}
-      <div className="col-9 d-flex flex-column">
-        <Chat onPageChange={handlePageChange} wsRef={wsRef} />
+        {/* Right Side - Chat (1/3) */}
+        <div className="col-12 col-lg-4 h-100">
+          <div className="h-100">
+            <Chat onPageChange={handlePageChange} wsRef={wsRef} />
+          </div>
+        </div>
       </div>
     </div>
   );

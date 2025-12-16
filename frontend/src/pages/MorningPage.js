@@ -15,44 +15,39 @@ function MorningPage() {
   };
 
   return (
-    <div className="container-fluid vh-100 d-flex align-items-center justify-content-center" style={{ backgroundColor: '#000000' }}>
-      <div className="row w-100">
-        <div className="col-12 text-center mb-4">
+    <div className="container-fluid page-shell d-flex align-items-center justify-content-center">
+      <div className="row w-100 g-3">
+        <div className="col-12 text-center">
           <button
-            className="btn"
+            className="btn mac-button px-4 py-2"
             onClick={() => navigate('/')}
-            style={{ backgroundColor: '#ff6600', color: '#000000' }}
           >
             ← Back to Home
           </button>
         </div>
         
-        <div className="col-6">
+        <div className="col-12 col-md-6">
           <button
-            className="btn w-100 h-100 p-5"
+            className="btn w-100 p-5 mac-button"
             onClick={handleMeditation}
             style={{
-              backgroundColor: '#ff6600',
-              color: '#000000',
               fontSize: '2rem',
               fontWeight: 'bold',
-              minHeight: '300px'
+              minHeight: '260px'
             }}
           >
             Meditation
           </button>
         </div>
         
-        <div className="col-6">
+        <div className="col-12 col-md-6">
           <button
-            className="btn w-100 h-100 p-5"
+            className="btn w-100 p-5 mac-button"
             onClick={handleMotivation}
             style={{
-              backgroundColor: '#ff6600',
-              color: '#000000',
               fontSize: '2rem',
               fontWeight: 'bold',
-              minHeight: '300px'
+              minHeight: '260px'
             }}
           >
             Motivation

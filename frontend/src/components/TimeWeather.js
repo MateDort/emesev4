@@ -18,10 +18,12 @@ function TimeWeather({ time, weather }) {
     });
   };
 
+  const locationLabel = weather?.location || 'Marietta, GA';
+
   return (
-    <div style={{ color: '#ffffff' }}>
+    <div className="aqua-card p-3">
       <div className="mb-2">
-        <div className="h4 mb-0" style={{ color: '#ff6600' }}>
+        <div className="h4 mb-0" style={{ color: 'var(--mac-accent)' }}>
           {formatTime(time)}
         </div>
         <div className="small text-muted">{formatDate(time)}</div>
@@ -29,8 +31,9 @@ function TimeWeather({ time, weather }) {
       
       {weather ? (
         <div className="small">
+          <div className="fw-semibold">{locationLabel}</div>
           <div>Weather: {weather.temperature}°F</div>
-          <div>{weather.description}</div>
+          <div className="text-capitalize">{weather.description}</div>
         </div>
       ) : (
         <div className="small text-muted">Weather: Loading...</div>

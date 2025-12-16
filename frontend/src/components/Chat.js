@@ -14,7 +14,62 @@ function Chat({ onPageChange, wsRef }) {
   const audioRef = useRef(null);
 
   useEffect(() => {
+    const cachedMessages = localStorage.getItem('chatMessages');
+    if (cachedMessages) {
+      setMessages(JSON.parse(cachedMessages));
+    }
+
+    const fetchHistory = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/chat/history`);
+        const history = response.data.history || [];
+        const flattened = [];
+        history.forEach(entry => {
+          if (entry.user) {
+            flattened.push({ type: 'user', text: entry.user });
+          }
+          if (entry.assistant) {
+            flattened.push({ type: 'assistant', text: entry.assistant });
+          }
+        });
+        if (flattened.length > 0) {
+          setMessages(flattened);
+        }
+      } catch (error) {
+        console.error('Error loading chat history:', error);
+      }
+    };
+
+    fetchHistory();
+  }, []);
+
+  useEffect(() => {
+    const ws = wsRef?.current;
+    if (!ws) return;
+
+    const handleIncoming = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'automatic_task') {
+          setMessages(prev => [
+            ...prev,
+            { type: 'system', text: data.message }
+          ]);
+        }
+      } catch (e) {
+        console.error('Error handling websocket message:', e);
+      }
+    };
+
+    ws.addEventListener('message', handleIncoming);
+    return () => {
+      ws.removeEventListener('message', handleIncoming);
+    };
+  }, [wsRef?.current]);
+
+  useEffect(() => {
     scrollToBottom();
+    localStorage.setItem('chatMessages', JSON.stringify(messages));
   }, [messages]);
 
   const scrollToBottom = () => {
@@ -94,9 +149,9 @@ function Chat({ onPageChange, wsRef }) {
   };
 
   return (
-    <div className="d-flex flex-column h-100" style={{ backgroundColor: '#000000' }}>
+    <div className="d-flex flex-column h-100 chat-surface-light p-3">
       {/* Chat Messages */}
-      <div className="flex-grow-1 overflow-auto p-4">
+      <div className="flex-grow-1 overflow-auto p-3 scroll-pane">
         {messages.map((msg, idx) => (
           <div
             key={idx}
@@ -104,18 +159,22 @@ function Chat({ onPageChange, wsRef }) {
           >
             {msg.type === 'user' ? (
               <span
-                className="d-inline-block p-3 rounded"
-                style={{ backgroundColor: '#ff6600', color: '#000000', maxWidth: '70%' }}
+                className="d-inline-block p-3 rounded message-bubble-user"
+                style={{ maxWidth: '70%' }}
               >
                 {msg.text}
               </span>
+            ) : msg.type === 'system' ? (
+              <span className="d-inline-block p-3 message-bubble-system" style={{ maxWidth: '70%' }}>
+                {msg.text}
+              </span>
             ) : (
-              <span className="text-white">{msg.text}</span>
+              <span className="text-dark">{msg.text}</span>
             )}
           </div>
         ))}
         {isThinking && (
-          <div className="text-white">
+          <div className="text-dark">
             <span className="thinking-animation">Thinking...</span>
           </div>
         )}
@@ -123,14 +182,13 @@ function Chat({ onPageChange, wsRef }) {
       </div>
 
       {/* Chat Input */}
-      <div className="border-top border-secondary p-3">
-        <form onSubmit={handleSend} className="d-flex align-items-center">
+      <div className="border-top mac-divider p-3 mt-3">
+        <form onSubmit={handleSend} className="d-flex align-items-center gap-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            className="form-control me-2"
-            style={{ backgroundColor: '#000000', color: '#ffffff', borderColor: '#ff6600' }}
+            className="form-control chat-input-light"
             placeholder="Type your message..."
           />
           <Toolbox
@@ -141,8 +199,8 @@ function Chat({ onPageChange, wsRef }) {
           />
           <button
             type="submit"
-            className="btn"
-            style={{ backgroundColor: '#ff6600', color: '#000000' }}
+            className="btn mac-button fw-semibold"
+            style={{ borderColor: '#8aa9d6' }}
           >
             Send
           </button>

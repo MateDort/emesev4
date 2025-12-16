@@ -38,10 +38,9 @@ Morning Page:
 
 colors:
 primary colors:
-- black
-- orange
+- light and 2003 style colors
 background:
-- the bg should be black 
+- the bg should be light white and light blue like a 2003 macbook
 chat:
 - in the chat the bg should be black and the users message bubble should be orange and the llm should not have a message box. 
 dividers:

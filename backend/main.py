@@ -3,7 +3,7 @@ Emese v0.4.1 - Main Backend Server
 FastAPI server that handles all requests from the frontend
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -18,12 +18,13 @@ from agents.main_agent import MainAgent
 from agents.scheduling_agent import SchedulingAgent
 from agents.study_agent import StudyAgent
 from agents.news_agent import NewsAgent
-from database.database import init_db, get_db
+from database.database import init_db, get_db, SessionLocal, ChatHistory
 from services.voice_service import VoiceService
 from services.tts_service import TTSService
 from services.reminder_service import ReminderService
 from services.note_service import NoteService
 from services.automatic_tasks import AutomaticTasks
+from typing import List
 
 # Load .env from project root (parent directory)
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
@@ -126,52 +127,58 @@ async def root():
     return {"message": "Emese API v0.4.1", "status": "running"}
 
 @app.get("/api/schedule")
-async def get_schedule():
+async def get_schedule(db = Depends(get_db)):
     """Get today's schedule"""
-    db = next(get_db())
-    schedule = scheduling_agent.get_today_schedule(db)
-    
-    # If no schedule exists, create one
-    if not schedule or len(schedule) == 0:
-        try:
-            scheduling_agent.create_daily_schedule(db)
-            schedule = scheduling_agent.get_today_schedule(db)
-        except Exception as e:
-            print(f"Error creating schedule: {e}")
-    
-    return {"schedule": schedule}
+    try:
+        schedule = scheduling_agent.get_today_schedule(db)
+        
+        # If no schedule exists, create one
+        if not schedule or len(schedule) == 0:
+            try:
+                scheduling_agent.create_daily_schedule(db)
+                schedule = scheduling_agent.get_today_schedule(db)
+            except Exception as e:
+                print(f"Error creating schedule: {e}")
+        
+        return {"schedule": schedule}
+    finally:
+        db.close()
 
 @app.get("/api/study")
-async def get_study():
+async def get_study(db = Depends(get_db)):
     """Get today's study"""
-    db = next(get_db())
-    study = study_agent.get_today_study(db)
-    
-    # If no study exists, create one
-    if not study:
-        try:
-            study_agent.create_daily_study(db)
-            study = study_agent.get_today_study(db)
-        except Exception as e:
-            print(f"Error creating study: {e}")
-    
-    return {"study": study}
+    try:
+        study = study_agent.get_today_study(db)
+        
+        # If no study exists, create one
+        if not study:
+            try:
+                study_agent.create_daily_study(db)
+                study = study_agent.get_today_study(db)
+            except Exception as e:
+                print(f"Error creating study: {e}")
+        
+        return {"study": study}
+    finally:
+        db.close()
 
 @app.get("/api/news")
-async def get_news():
+async def get_news(db = Depends(get_db)):
     """Get today's news"""
-    db = next(get_db())
-    news = news_agent.get_today_news(db)
-    
-    # If no news exists, create one
-    if not news:
-        try:
-            news_agent.create_daily_newsletter(db)
-            news = news_agent.get_today_news(db)
-        except Exception as e:
-            print(f"Error creating newsletter: {e}")
-    
-    return {"news": news}
+    try:
+        news = news_agent.get_today_news(db)
+        
+        # If no news exists, create one
+        if not news:
+            try:
+                news_agent.create_daily_newsletter(db)
+                news = news_agent.get_today_news(db)
+            except Exception as e:
+                print(f"Error creating newsletter: {e}")
+        
+        return {"news": news}
+    finally:
+        db.close()
 
 @app.get("/api/weather")
 async def get_weather():
@@ -184,7 +191,7 @@ async def get_weather():
         api_key = os.getenv("WEATHER_API_KEY")
         if api_key:
             # Example with OpenWeatherMap
-            city = "Atlanta"  # Default location
+            city = "Marietta,GA"  # Default location
             url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=imperial"
             response = requests.get(url)
             if response.status_code == 200:
@@ -193,13 +200,19 @@ async def get_weather():
                     "weather": {
                         "temperature": data["main"]["temp"],
                         "description": data["weather"][0]["description"],
-                        "location": city
+                        "location": "Marietta, GA"
                     }
                 }
     except:
         pass
     
-    return {"weather": {"temperature": "N/A", "description": "Weather service not configured"}}
+    return {
+        "weather": {
+            "temperature": "N/A",
+            "description": "Weather service not configured",
+            "location": "Marietta, GA"
+        }
+    }
 
 @app.get("/api/time")
 async def get_time():
@@ -212,47 +225,134 @@ async def chat_endpoint(request: ChatRequest):
     response = await main_agent.process_message(request.message)
     return response
 
+@app.get("/api/chat/history")
+async def chat_history(limit: int = 50, db = Depends(get_db)):
+    """Return recent chat history for the client to preload messages."""
+    try:
+        records = (
+            db.query(ChatHistory)
+            .order_by(ChatHistory.timestamp.asc())
+            .limit(limit)
+            .all()
+        )
+        history = []
+        for record in records:
+            history.append({
+                "user": record.user_message,
+                "assistant": record.assistant_message,
+                "timestamp": record.timestamp.isoformat() if record.timestamp else None
+            })
+        return {"history": history}
+    finally:
+        db.close()
+
+# Reminder routes - specific routes first to avoid conflicts
+@app.post("/api/reminders/{reminder_id}/complete")
+async def complete_reminder(reminder_id: int, db = Depends(get_db)):
+    """Mark a reminder as completed"""
+    try:
+        reminder = reminder_service.complete_reminder(db, reminder_id)
+        if reminder:
+            return {
+                "message": "Reminder completed",
+                "reminder": {
+                    "id": reminder.id,
+                    "title": reminder.title,
+                    "is_completed": reminder.is_completed
+                }
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Reminder not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error completing reminder: {e}")
+        raise HTTPException(status_code=500, detail=f"Error completing reminder: {str(e)}")
+    finally:
+        db.close()
+
+@app.delete("/api/reminders/{reminder_id}")
+async def delete_reminder(reminder_id: int, db = Depends(get_db)):
+    """Delete a reminder"""
+    try:
+        reminder = reminder_service.delete_reminder(db, reminder_id)
+        if reminder:
+            return {"message": "Reminder deleted", "id": reminder.id}
+        else:
+            raise HTTPException(status_code=404, detail="Reminder not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting reminder: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting reminder: {str(e)}")
+    finally:
+        db.close()
+
 @app.post("/api/reminders")
-async def create_reminder(reminder_data: dict):
+async def create_reminder(reminder_data: dict, db = Depends(get_db)):
     """Create a new reminder"""
-    db = next(get_db())
-    reminder = reminder_service.create_reminder(db, reminder_data)
-    return {"reminder": reminder}
+    try:
+        reminder = reminder_service.create_reminder(db, reminder_data)
+        return {"reminder": reminder}
+    finally:
+        db.close()
 
 @app.get("/api/reminders")
-async def get_reminders():
+async def get_reminders(db = Depends(get_db)):
     """Get all active reminders"""
-    db = next(get_db())
-    reminders = reminder_service.get_active_reminders(db)
-    return {"reminders": reminders}
+    try:
+        reminders = reminder_service.get_active_reminders(db)
+        return {"reminders": reminders}
+    finally:
+        db.close()
 
 @app.post("/api/notes")
-async def create_note(note_data: dict):
+async def create_note(note_data: dict, db = Depends(get_db)):
     """Create a new note"""
-    db = next(get_db())
-    note = note_service.create_note(db, note_data)
-    return {"note": note}
+    try:
+        note = note_service.create_note(db, note_data)
+        return {"note": note}
+    finally:
+        db.close()
 
 @app.get("/api/notes")
-async def get_notes():
+async def get_notes(db = Depends(get_db)):
     """Get all notes"""
-    db = next(get_db())
-    notes = note_service.get_all_notes(db)
-    return {"notes": notes}
+    try:
+        notes = note_service.get_all_notes(db)
+        return {"notes": notes}
+    finally:
+        db.close()
+
+@app.get("/api/notes/{note_id}")
+async def get_note(note_id: int, db = Depends(get_db)):
+    """Get a specific note"""
+    try:
+        note = note_service.get_note(db, note_id)
+        if note:
+            return {"note": note}
+        else:
+            raise HTTPException(status_code=404, detail="Note not found")
+    finally:
+        db.close()
 
 @app.post("/api/notes/{note_id}")
-async def update_note(note_id: int, note_data: dict):
+async def update_note(note_id: int, note_data: dict, db = Depends(get_db)):
     """Update a note"""
-    db = next(get_db())
-    note = note_service.update_note(db, note_id, note_data)
-    return {"note": note}
+    try:
+        note = note_service.update_note(db, note_id, note_data)
+        return {"note": note}
+    finally:
+        db.close()
 
 @app.delete("/api/notes/{note_id}")
-async def delete_note(note_id: int):
+async def delete_note(note_id: int, db = Depends(get_db)):
     """Delete a note"""
-    db = next(get_db())
-    note_service.delete_note(db, note_id)
-    return {"message": "Note deleted"}
+    try:
+        note_service.delete_note(db, note_id)
+        return {"message": "Note deleted"}
+    finally:
+        db.close()
 
 # Startup and shutdown are now handled by lifespan context manager
 

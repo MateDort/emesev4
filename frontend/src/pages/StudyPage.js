@@ -25,55 +25,55 @@ function StudyPage() {
   };
 
   return (
-    <div className="container-fluid vh-100" style={{ backgroundColor: '#000000', color: '#ffffff' }}>
-      <div className="row h-100">
+    <div className="container-fluid page-shell">
+      <div className="row">
+        <div className="col-12 mb-4 d-flex justify-content-between align-items-center">
+          <button
+            className="btn mac-button"
+            onClick={() => navigate('/')}
+          >
+            ← Back to Home
+          </button>
+          <div className="text-muted small">Latest study</div>
+        </div>
+        
         <div className="col-12">
-          <div className="p-4">
-            <button
-              className="btn mb-4"
-              onClick={() => navigate('/')}
-              style={{ backgroundColor: '#ff6600', color: '#000000' }}
-            >
-              ← Back to Home
-            </button>
-            
-            {loading ? (
-              <div className="text-center">Loading study...</div>
-            ) : study ? (
-              <div>
-                <h1 className="mb-4" style={{ color: '#ff6600' }}>{study.title}</h1>
-                <div
-                  className="study-content"
-                  style={{
-                    lineHeight: '1.8',
-                    fontSize: '1.1rem',
-                    maxWidth: '800px',
-                    margin: '0 auto'
-                  }}
-                >
-                  {study.content.split('\n').map((paragraph, idx) => (
-                    <p key={idx} className="mb-3">
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-                {study.source_url && (
-                  <div className="mt-4">
-                    <a
-                      href={study.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: '#ff6600' }}
-                    >
-                      View Source
-                    </a>
-                  </div>
-                )}
+          {loading ? (
+            <div className="text-center">Loading study...</div>
+          ) : study ? (
+            <div className="aqua-card p-4 scroll-pane" style={{ maxHeight: '75vh' }}>
+              <h1 className="mb-3" style={{ color: 'var(--mac-accent)' }}>{study.title}</h1>
+              <div
+                className="study-content"
+                style={{
+                  lineHeight: '1.8',
+                  fontSize: '1.05rem',
+                  maxWidth: '900px',
+                  margin: '0 auto'
+                }}
+              >
+                {study.content.split('\n').map((paragraph, idx) => (
+                  <p key={idx} className="mb-3">
+                    {paragraph}
+                  </p>
+                ))}
               </div>
-            ) : (
-              <div className="text-center">No study available for today.</div>
-            )}
-          </div>
+              {study.source_url && (
+                <div className="mt-4 text-center">
+                  <a
+                    href={study.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: 'var(--mac-accent)', fontWeight: '600' }}
+                  >
+                    View Source
+                  </a>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center">No study available for today.</div>
+          )}
         </div>
       </div>
     </div>
