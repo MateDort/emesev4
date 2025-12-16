@@ -36,11 +36,17 @@ class VoiceService:
             
             # Decode base64 audio if needed
             if isinstance(audio_data, str):
+                # Remove data URL prefix if present
+                if ',' in audio_data:
+                    audio_data = audio_data.split(',')[1]
                 audio_bytes = base64.b64decode(audio_data)
             else:
                 audio_bytes = audio_data
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+            # Determine file extension based on audio format
+            # WebM/Opus is common from browser, but Whisper accepts various formats
+            # We'll use .webm extension and let Whisper handle it
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_file:
                 tmp_file.write(audio_bytes)
                 tmp_file_path = tmp_file.name
             
@@ -48,7 +54,8 @@ class VoiceService:
             with open(tmp_file_path, "rb") as audio_file:
                 transcript = self.client.audio.transcriptions.create(
                     model="whisper-1",
-                    file=audio_file
+                    file=audio_file,
+                    language="en"  # Optional: specify language for better accuracy
                 )
             
             # Clean up

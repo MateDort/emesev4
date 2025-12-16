@@ -42,6 +42,11 @@ function HomePage() {
     
     // Fetch weather
     fetchWeather();
+    
+    // Refresh weather every 10 minutes
+    const weatherInterval = setInterval(() => {
+      fetchWeather();
+    }, 600000);
 
     // Check if it's morning (5-6am) to show morning page
     const hour = new Date().getHours();
@@ -54,6 +59,7 @@ function HomePage() {
 
     return () => {
       clearInterval(timeInterval);
+      clearInterval(weatherInterval);
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -90,9 +96,17 @@ function HomePage() {
   const fetchWeather = async () => {
     try {
       const response = await axios.get(`${API_URL}/api/weather`);
-      setWeather(response.data.weather);
+      if (response.data && response.data.weather) {
+        setWeather(response.data.weather);
+      }
     } catch (error) {
       console.error('Error fetching weather:', error);
+      // Set a fallback weather object on error
+      setWeather({
+        temperature: "N/A",
+        description: "Unable to fetch weather",
+        location: "Marietta, GA"
+      });
     }
   };
 

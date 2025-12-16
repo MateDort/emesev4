@@ -32,8 +32,19 @@ function TimeWeather({ time, weather }) {
       {weather ? (
         <div className="small">
           <div className="fw-semibold">{locationLabel}</div>
-          <div>Weather: {weather.temperature}°F</div>
-          <div className="text-capitalize">{weather.description}</div>
+          {weather.temperature === "N/A" || weather.description === "Weather service not configured" ? (
+            <div className="text-muted">
+              <div>Weather: Not configured</div>
+              <div className="text-capitalize" style={{ fontSize: '0.75rem' }}>
+                Add WEATHER_API_KEY to .env
+              </div>
+            </div>
+          ) : (
+            <>
+              <div>Weather: {weather.temperature}°F</div>
+              <div className="text-capitalize">{weather.description}</div>
+            </>
+          )}
         </div>
       ) : (
         <div className="small text-muted">Weather: Loading...</div>

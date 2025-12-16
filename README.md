@@ -49,7 +49,8 @@ pip install -r requirements.txt
 GEMINI_API_KEY=your_gemini_api_key
 OPENAI_API_KEY=your_openai_api_key
 ELEVENLABS_API_KEY=your_elevenlabs_api_key
-SERPER_API_KEY=your_serper_api_key
+SERPER_API_KEY=your_serper_api_key (used for weather, news, and study searches)
+PICOVOICE_ACCESS_KEY=your_picovoice_access_key (for wake word detection - get free key at https://console.picovoice.ai/)
 ```
 
 5. Run backend:
@@ -82,8 +83,9 @@ npm start
 ## Features
 
 - **Chat Interface**: Real-time chat with Emese via WebSocket
-- **Voice Input**: Wake word "computer" detection and speech-to-text
+- **Voice Input**: Offline wake word "computer" detection using pvporcupine + pyaudio, speech-to-text via OpenAI Whisper (say "computer" to activate)
 - **Text-to-Speech**: ElevenLabs TTS with local fallback
+- **Weather Widget**: Shows current weather (uses SERPER_API_KEY to search for weather)
 - **Schedule Widget**: Shows current and next event
 - **Study Page**: Daily studies on AI, design, and related topics
 - **News Page**: Daily newsletter in newspaper style

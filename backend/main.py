@@ -24,6 +24,7 @@ from services.tts_service import TTSService
 from services.reminder_service import ReminderService
 from services.note_service import NoteService
 from services.automatic_tasks import AutomaticTasks
+from services.wake_word_service import WakeWordService
 from typing import List
 
 # Load .env from project root (parent directory)
@@ -49,14 +50,70 @@ automatic_tasks = AutomaticTasks()
 # WebSocket connections
 active_connections = []
 
+# Wake word service
+wake_word_service = None
+wake_word_event_loop = None
+
+def on_wake_word_detected():
+    """Callback when wake word is detected - notify all connected clients"""
+    import asyncio
+    print("🔔 Wake word detected - notifying clients...")
+    
+    # Send wake word event to all connected clients
+    async def notify_clients():
+        for connection in active_connections.copy():
+            try:
+                await connection.send_json({
+                    "type": "wake_word_detected",
+                    "message": "Wake word 'computer' detected"
+                })
+            except Exception as e:
+                print(f"Error sending wake word notification: {e}")
+    
+    # Use the stored event loop or get the current one
+    try:
+        if wake_word_event_loop:
+            asyncio.run_coroutine_threadsafe(notify_clients(), wake_word_event_loop)
+        else:
+            # Fallback: try to get the current event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(notify_clients())
+            else:
+                loop.run_until_complete(notify_clients())
+    except Exception as e:
+        print(f"Error in wake word callback: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
+    global wake_word_service, wake_word_event_loop
+    import asyncio
+    
+    # Store the event loop for wake word callback
+    wake_word_event_loop = asyncio.get_event_loop()
+    
     # Startup
     automatic_tasks.start_scheduler()
+    
+    # Initialize and start wake word detection
+    try:
+        wake_word_service = WakeWordService(wake_word_callback=on_wake_word_detected)
+        if wake_word_service.available:
+            wake_word_service.start_listening()
+            print("✅ Wake word detection started")
+        else:
+            print("⚠️ Wake word detection not available (check PICOVOICE_ACCESS_KEY)")
+    except Exception as e:
+        print(f"Error starting wake word detection: {e}")
+    
     yield
+    
     # Shutdown
     automatic_tasks.stop_scheduler()
+    if wake_word_service:
+        wake_word_service.stop_listening()
+    wake_word_event_loop = None
 
 app = FastAPI(title="Emese API", version="0.4.1", lifespan=lifespan)
 
@@ -99,23 +156,53 @@ async def websocket_endpoint(websocket: WebSocket):
             elif message_type == "voice":
                 # Handle voice input
                 audio_data = data.get("audio")
+                if not audio_data:
+                    await websocket.send_json({
+                        "type": "voice_response",
+                        "transcription": "",
+                        "message": "No audio data received",
+                        "audio": None
+                    })
+                    continue
+                
                 transcription = await voice_service.transcribe(audio_data)
+                
+                # Only process if transcription is valid (not an error message)
+                if transcription.startswith("Error"):
+                    await websocket.send_json({
+                        "type": "voice_response",
+                        "transcription": "",
+                        "message": transcription,
+                        "audio": None
+                    })
+                    continue
+                
                 response = await main_agent.process_message(transcription)
                 audio_response = None
                 if response.get("tts"):
-                    audio_response = await tts_service.synthesize(response["message"])
+                    try:
+                        audio_bytes = await tts_service.synthesize(response["message"])
+                        if audio_bytes:
+                            # Convert to base64 for JSON transmission
+                            import base64
+                            audio_response = base64.b64encode(audio_bytes).decode('utf-8')
+                    except Exception as e:
+                        print(f"Error generating TTS: {e}")
+                
                 await websocket.send_json({
                     "type": "voice_response",
                     "transcription": transcription,
                     "message": response["message"],
+                    "action": response.get("action"),
+                    "data": response.get("data"),
                     "audio": audio_response
                 })
             
-            elif message_type == "wakeword_detected":
-                # Wake word "computer" detected
+            elif message_type == "start_recording":
+                # Client is ready to record after wake word detection
                 await websocket.send_json({
-                    "type": "wakeword_ack",
-                    "message": "Listening..."
+                    "type": "recording_started",
+                    "message": "Recording started - speak now"
                 })
     
     except WebSocketDisconnect:
@@ -182,37 +269,134 @@ async def get_news(db = Depends(get_db)):
 
 @app.get("/api/weather")
 async def get_weather():
-    """Get current weather"""
-    # Using a free weather API (OpenWeatherMap or similar)
-    # For now, return placeholder
+    """Get current weather using Serper API"""
     import requests
+    import re
     try:
-        # You can add OpenWeatherMap API key to .env
-        api_key = os.getenv("WEATHER_API_KEY")
-        if api_key:
-            # Example with OpenWeatherMap
-            city = "Marietta,GA"  # Default location
-            url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=imperial"
-            response = requests.get(url)
-            if response.status_code == 200:
-                data = response.json()
+        serper_api_key = os.getenv("SERPER_API_KEY") or os.getenv("SERPER_API")
+        if not serper_api_key:
+            return {
+                "weather": {
+                    "temperature": "N/A",
+                    "description": "Weather service not configured - SERPER_API_KEY not set",
+                    "location": "Marietta, GA"
+                }
+            }
+        
+        # Search for current weather using Serper
+        city = "Marietta, GA"  # Default location
+        search_query = f"weather {city} today"
+        
+        headers = {
+            "X-API-KEY": serper_api_key,
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "q": search_query,
+            "num": 3
+        }
+        
+        response = requests.post(
+            "https://google.serper.dev/search",
+            headers=headers,
+            json=payload,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            temperature = None
+            description = None
+            
+            # Check answer box first (Google often provides weather in answerBox)
+            if "answerBox" in data:
+                answer = data["answerBox"]
+                answer_text = str(answer)
+                
+                # Try to extract temperature (look for patterns like "72°F" or "72 F")
+                temp_patterns = [
+                    r'(\d+)\s*°\s*F',
+                    r'(\d+)\s*°F',
+                    r'(\d+)\s*F\b',
+                    r'(\d+)\s*degrees?\s*F',
+                ]
+                for pattern in temp_patterns:
+                    temp_match = re.search(pattern, answer_text, re.IGNORECASE)
+                    if temp_match:
+                        temperature = temp_match.group(1)
+                        break
+                
+                # Extract description (look for weather conditions)
+                if "sunny" in answer_text.lower():
+                    description = "Sunny"
+                elif "cloudy" in answer_text.lower():
+                    description = "Cloudy"
+                elif "rain" in answer_text.lower():
+                    description = "Rainy"
+                elif "clear" in answer_text.lower():
+                    description = "Clear"
+                else:
+                    # Take first 50 chars as description
+                    description = answer_text[:50].strip()
+            
+            # Fallback to organic results
+            if not temperature and "organic" in data and len(data["organic"]) > 0:
+                for result in data["organic"][:2]:  # Check first 2 results
+                    snippet = result.get("snippet", "") + " " + result.get("title", "")
+                    
+                    # Try to extract temperature
+                    temp_patterns = [
+                        r'(\d+)\s*°\s*F',
+                        r'(\d+)\s*°F',
+                        r'(\d+)\s*F\b',
+                    ]
+                    for pattern in temp_patterns:
+                        temp_match = re.search(pattern, snippet, re.IGNORECASE)
+                        if temp_match:
+                            temperature = temp_match.group(1)
+                            break
+                    
+                    if temperature:
+                        # Extract description
+                        if "sunny" in snippet.lower():
+                            description = "Sunny"
+                        elif "cloudy" in snippet.lower():
+                            description = "Cloudy"
+                        elif "rain" in snippet.lower():
+                            description = "Rainy"
+                        elif "clear" in snippet.lower():
+                            description = "Clear"
+                        else:
+                            description = snippet[:50].strip() if snippet else "Current weather"
+                        break
+            
+            if temperature:
                 return {
                     "weather": {
-                        "temperature": data["main"]["temp"],
-                        "description": data["weather"][0]["description"],
-                        "location": "Marietta, GA"
+                        "temperature": temperature,
+                        "description": description or "Current weather conditions",
+                        "location": city
                     }
                 }
-    except:
-        pass
-    
-    return {
-        "weather": {
-            "temperature": "N/A",
-            "description": "Weather service not configured",
-            "location": "Marietta, GA"
+        
+        # If we couldn't extract weather, return a message
+        return {
+            "weather": {
+                "temperature": "N/A",
+                "description": "Unable to fetch weather data from search results",
+                "location": city
+            }
         }
-    }
+    except Exception as e:
+        print(f"Error fetching weather: {e}")
+        return {
+            "weather": {
+                "temperature": "N/A",
+                "description": f"Error: {str(e)}",
+                "location": "Marietta, GA"
+            }
+        }
 
 @app.get("/api/time")
 async def get_time():

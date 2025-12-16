@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Toolbox from './Toolbox';
 import axios from 'axios';
 
@@ -10,8 +10,15 @@ function Chat({ onPageChange, wsRef }) {
   const [isThinking, setIsThinking] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [muted, setMuted] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [wakeWordDetected, setWakeWordDetected] = useState(false);
+  const [isListeningActive, setIsListeningActive] = useState(false);
+  const [voiceAvailable, setVoiceAvailable] = useState(true); // Backend handles wake word detection
   const messagesEndRef = useRef(null);
   const audioRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const isRecordingRef = useRef(false);
 
   useEffect(() => {
     const cachedMessages = localStorage.getItem('chatMessages');
@@ -43,14 +50,31 @@ function Chat({ onPageChange, wsRef }) {
     fetchHistory();
   }, []);
 
+  // Listen for wake word detection and other messages from backend via WebSocket
   useEffect(() => {
     const ws = wsRef?.current;
     if (!ws) return;
 
-    const handleIncoming = (event) => {
+    const handleWebSocketMessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'automatic_task') {
+        console.log('📨 WebSocket message received:', data.type);
+        
+        if (data.type === 'wake_word_detected') {
+          console.log('✅ Wake word detected from backend:', data.message);
+          
+          // Only start recording if not already recording
+          if (!isRecordingRef.current && !wakeWordDetected) {
+            setWakeWordDetected(true);
+            setIsListeningActive(true);
+            
+            // Start recording immediately
+            console.log('🎙️ Starting recording after wake word detection...');
+            startRecording();
+          } else {
+            console.log('⚠️ Already recording or wake word already detected, ignoring');
+          }
+        } else if (data.type === 'automatic_task') {
           setMessages(prev => [
             ...prev,
             { type: 'system', text: data.message }
@@ -61,17 +85,175 @@ function Chat({ onPageChange, wsRef }) {
       }
     };
 
-    ws.addEventListener('message', handleIncoming);
+    ws.addEventListener('message', handleWebSocketMessage);
+    
+    // Set listening as active (backend is always listening)
+    setIsListeningActive(true);
+    console.log('🎤 Listening for wake word via backend (pvporcupine)...');
+    
     return () => {
-      ws.removeEventListener('message', handleIncoming);
+      ws.removeEventListener('message', handleWebSocketMessage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsRef]);
+
+  const startRecording = async () => {
+    if (isRecordingRef.current) {
+      console.log('Already recording');
+      return;
+    }
+    
+    isRecordingRef.current = true;
+    console.log('🎙️ Starting audio recording...');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted');
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      console.log('🔴 Recording started - speak now!');
+      
+      // Notify backend that recording started
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'start_recording'
+        }));
+      }
+      
+      // Set up stop handler
+      mediaRecorder.onstop = async () => {
+        console.log('🛑 Recording stopped, processing audio...');
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log(`📦 Audio blob size: ${audioBlob.size} bytes`);
+        
+        if (audioBlob.size > 0) {
+          await sendVoiceMessage(audioBlob);
+        } else {
+          console.warn('⚠️ No audio data recorded');
+        }
+        
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Reset state - backend will continue listening for wake word
+        setWakeWordDetected(false);
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        setIsListeningActive(true); // Backend is always listening
+        audioChunksRef.current = [];
+      };
+      
+      // Auto-stop after 8 seconds max (user can also click Stop button)
+      setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          console.log('⏱️ Auto-stopping recording after 8 seconds');
+          mediaRecorderRef.current.stop();
+        }
+      }, 8000);
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      setWakeWordDetected(false);
+      setIsRecording(false);
+      isRecordingRef.current = false;
+      setIsListeningActive(true); // Backend continues listening
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const sendVoiceMessage = async (audioBlob) => {
+    try {
+      console.log('📤 Sending voice message to backend...');
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Audio = reader.result.split(',')[1]; // Remove data:audio/webm;base64, prefix
+        console.log(`📡 Sending ${base64Audio.length} characters of base64 audio`);
+        
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'voice',
+            audio: base64Audio
+          }));
+          console.log('✅ Voice message sent via WebSocket');
+
+          // Listen for response
+          const messageHandler = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'voice_response') {
+              setIsThinking(false);
+              setMessages(prev => [
+                ...prev,
+                { type: 'user', text: data.transcription },
+                { type: 'assistant', text: data.message }
+              ]);
+              
+              // Handle actions
+              if (data.action === 'open_page') {
+                onPageChange(data.data.page);
+              }
+
+              // Play audio response if available
+              if (data.audio && ttsEnabled && !muted) {
+                playAudio(data.audio);
+              }
+
+              wsRef.current.removeEventListener('message', messageHandler);
+            }
+          };
+
+          wsRef.current.addEventListener('message', messageHandler);
+          setIsThinking(true);
+        } else {
+          // Fallback: convert to text first, then send as chat
+          console.warn('WebSocket not available, cannot send voice message');
+        }
+      };
+      reader.readAsDataURL(audioBlob);
+    } catch (error) {
+      console.error('Error sending voice message:', error);
+      setIsThinking(false);
+    }
+  };
+
+
 
   useEffect(() => {
     scrollToBottom();
     localStorage.setItem('chatMessages', JSON.stringify(messages));
   }, [messages]);
+
+  useEffect(() => {
+    // Cleanup on unmount
+    return () => {
+      // Stop media recorder
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (error) {
+          // Ignore errors on cleanup
+        }
+      }
+    };
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -142,10 +324,25 @@ function Chat({ onPageChange, wsRef }) {
 
   const playAudio = (audioData) => {
     if (audioRef.current) {
-      const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+      // audioData might be base64 string or ArrayBuffer
+      let audioBlob;
+      if (typeof audioData === 'string') {
+        // Base64 string
+        const binaryString = atob(audioData);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
+      } else {
+        // ArrayBuffer
+        audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+      }
       const audioUrl = URL.createObjectURL(audioBlob);
       audioRef.current.src = audioUrl;
-      audioRef.current.play();
+      audioRef.current.play().catch(error => {
+        console.error('Error playing audio:', error);
+      });
     }
   };
 
@@ -181,6 +378,36 @@ function Chat({ onPageChange, wsRef }) {
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Voice Status Indicator - Always show when voice is available */}
+      {voiceAvailable && (
+        <div className="border-top mac-divider p-2">
+          <div className="d-flex align-items-center gap-2 small">
+            {isRecording ? (
+              <>
+                <span className="text-danger">
+                  <span className="spinner-border spinner-border-sm me-2" role="status" />
+                  Recording... (speak now)
+                </span>
+                <button
+                  onClick={stopRecording}
+                  className="btn btn-sm btn-outline-danger ms-auto"
+                >
+                  Stop
+                </button>
+              </>
+            ) : isListeningActive ? (
+              <span className="text-info" style={{ fontSize: '0.75rem' }}>
+                🎤 Listening... Say "computer"
+              </span>
+            ) : (
+              <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                💬 Voice ready - Say "computer" to activate
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Chat Input */}
       <div className="border-top mac-divider p-3 mt-3">
