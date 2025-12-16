@@ -89,6 +89,37 @@ class WakeWordService:
             # Initialize PyAudio
             self.audio = pyaudio.PyAudio()
             
+            # Check if we're in a cloud environment or if no input devices are available
+            # Cloud environments (Railway, Vercel, etc.) typically don't have microphones
+            is_cloud_env = (
+                os.getenv("RAILWAY_ENVIRONMENT") is not None or
+                os.getenv("VERCEL") is not None or
+                os.getenv("DYNO") is not None  # Heroku
+            )
+            
+            # Check for available input devices
+            input_device_count = self.audio.get_device_count()
+            has_input_device = False
+            for i in range(input_device_count):
+                try:
+                    device_info = self.audio.get_device_info_by_index(i)
+                    if device_info.get('maxInputChannels', 0) > 0:
+                        has_input_device = True
+                        break
+                except:
+                    continue
+            
+            if is_cloud_env or not has_input_device:
+                print("⚠️ Wake word detection disabled: No microphone available (cloud environment or no input devices)")
+                self.available = False
+                self.is_listening = False
+                if self.audio:
+                    try:
+                        self.audio.terminate()
+                    except:
+                        pass
+                return
+            
             # Get audio parameters from Porcupine
             sample_rate = self.porcupine.sample_rate
             frame_length = self.porcupine.frame_length
