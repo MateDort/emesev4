@@ -1,11 +1,14 @@
 Emese is an AI assistant who helps me (Mate) in my daily tasks or programming challanges, thinking, building, reminds me automatically and i can set reminders too. It is my own Jarvis who will improve from basic AI assistant into a whole Life OS. It is the 4th version of Emese, because my knowledge grew bigger I am restarting it from scratch and build it up into the Life OS
 
+Rules:
+Constantly run tests and push to github
 
 Emese:
 Emese's description and promt is in Emese.md
 
 Máté:
 The creater AKA me. My description is in Máté.md
+
 Version 0.4.1
 
 Frontend:
@@ -62,11 +65,14 @@ Storage:
 local SQL Lite
 - First we will build out the local storage structure because the AI assisntant wont be as big but later we will use a hybrid approach with supabase as cloud (forever storage) and local SQL Lite (only for 72 hours storage) 
 
+Deployment:
+-Vercel
 
 APIs:
 - LLM (Gemini, Claude later LLAMA as local and offline llm)
+- voice processing whisperAPI
 - weather and google searches, news, studies (Serper)
-
+- .env file already created with the API keys
 capebilities:
 Trigger Based:
 - answer questions using LLM or if needed use Serper API
@@ -80,3 +86,9 @@ Automatic:
 - every morning at 4am it creates a schedule using the @scheduling_parameters.md - if done it should be displayed in the chat "schedule done!" or "schedule failed due to ..."
 - every morning at 4:30am it creates a study using the @studies_parameters.md this is for me to widen my knowledge. the study agent should use google to find an interesting study recently published and llm should display it in a nice way to understand it not changing the study itself but add to it or explain complex things in it. if done it should be displayed in the chat "study created!" or "study creation failed due to ..."
 - every midnight it should create a news letter using @news_letter_parameters.md - display if done "news letter created" or "news letter creation failed due to ..."
+
+how it Emese works:
+- Emese always listents in the background for the wakeword "computer" 
+- if wakeword heard it listens for question or command and does it
+- it also constantly checks for any reminders set by itself or any automatic action going off
+- emese has voice and typing option as well
