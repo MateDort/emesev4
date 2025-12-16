@@ -12,14 +12,25 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const getWebSocketURL = () => {
   if (process.env.REACT_APP_API_URL) {
     // Convert http/https to ws/wss
-    const apiUrl = process.env.REACT_APP_API_URL;
-    if (apiUrl.startsWith('https://')) {
-      return apiUrl.replace('https://', 'wss://') + '/ws';
-    } else if (apiUrl.startsWith('http://')) {
-      return apiUrl.replace('http://', 'ws://') + '/ws';
+    const apiUrl = process.env.REACT_APP_API_URL.trim();
+    // Remove trailing slash if present
+    const cleanUrl = apiUrl.replace(/\/$/, '');
+    
+    if (cleanUrl.startsWith('https://')) {
+      return cleanUrl.replace('https://', 'wss://') + '/ws';
+    } else if (cleanUrl.startsWith('http://')) {
+      return cleanUrl.replace('http://', 'ws://') + '/ws';
+    } else if (cleanUrl.startsWith('wss://') || cleanUrl.startsWith('ws://')) {
+      // Already a WebSocket URL, just append /ws if not present
+      return cleanUrl.endsWith('/ws') ? cleanUrl : cleanUrl + '/ws';
+    } else {
+      // Assume https if no protocol specified
+      console.warn('⚠️ REACT_APP_API_URL missing protocol, assuming https://');
+      return 'wss://' + cleanUrl + '/ws';
     }
   }
   // Default to localhost for development
+  console.warn('⚠️ REACT_APP_API_URL not set, using localhost');
   return 'ws://localhost:8000/ws';
 };
 
@@ -68,19 +79,27 @@ function HomePage() {
 
   const connectWebSocket = () => {
     const wsUrl = getWebSocketURL();
+    console.log('🔌 Connecting to WebSocket:', wsUrl);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('✅ WebSocket connected successfully');
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('❌ WebSocket error:', error);
+      console.error('WebSocket URL was:', wsUrl);
+      console.error('API_URL env:', process.env.REACT_APP_API_URL);
     };
 
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
+    ws.onclose = (event) => {
+      console.log('🔌 WebSocket disconnected', event.code, event.reason);
+      // Attempt to reconnect after 3 seconds
+      setTimeout(() => {
+        console.log('🔄 Attempting to reconnect WebSocket...');
+        connectWebSocket();
+      }, 3000);
     };
   };
 

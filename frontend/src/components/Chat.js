@@ -19,6 +19,10 @@ function Chat({ onPageChange, wsRef }) {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const isRecordingRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const silenceDetectionRef = useRef(null);
+  const silenceStartTimeRef = useRef(null);
 
   useEffect(() => {
     const cachedMessages = localStorage.getItem('chatMessages');
@@ -112,6 +116,19 @@ function Chat({ onPageChange, wsRef }) {
         }
       };
 
+      // Set up audio context for silence detection
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      const microphone = audioContext.createMediaStreamSource(stream);
+      microphone.connect(analyser);
+      
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      silenceStartTimeRef.current = null;
 
       mediaRecorder.start();
       mediaRecorderRef.current = mediaRecorder;
@@ -128,6 +145,19 @@ function Chat({ onPageChange, wsRef }) {
       // Set up stop handler
       mediaRecorder.onstop = async () => {
         console.log('🛑 Recording stopped, processing audio...');
+        
+        // Clean up silence detection
+        if (silenceDetectionRef.current) {
+          cancelAnimationFrame(silenceDetectionRef.current);
+          silenceDetectionRef.current = null;
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+          audioContextRef.current = null;
+        }
+        analyserRef.current = null;
+        silenceStartTimeRef.current = null;
+        
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         console.log(`📦 Audio blob size: ${audioBlob.size} bytes`);
         
@@ -148,13 +178,61 @@ function Chat({ onPageChange, wsRef }) {
         audioChunksRef.current = [];
       };
       
-      // Auto-stop after 8 seconds max (user can also click Stop button)
-      setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          console.log('⏱️ Auto-stopping recording after 8 seconds');
-          mediaRecorderRef.current.stop();
+      // Silence detection: stop after 2 seconds of silence
+      const SILENCE_THRESHOLD = 10; // Adjust this value (0-255) based on your microphone sensitivity
+      const SILENCE_DURATION = 2000; // 2 seconds in milliseconds
+      
+      const detectSilence = () => {
+        if (!analyserRef.current || !mediaRecorderRef.current) {
+          return;
         }
-      }, 8000);
+        
+        analyserRef.current.getByteTimeDomainData(dataArray);
+        
+        // Calculate average volume (amplitude)
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          // Time domain data is centered around 128, so we calculate the deviation
+          const deviation = Math.abs(dataArray[i] - 128);
+          sum += deviation;
+        }
+        const average = sum / bufferLength;
+        
+        const isSilent = average < SILENCE_THRESHOLD;
+        const now = Date.now();
+        
+        if (isSilent) {
+          // If we're in silence, track when it started
+          if (silenceStartTimeRef.current === null) {
+            silenceStartTimeRef.current = now;
+            console.log('🔇 Silence detected, starting timer...');
+          } else {
+            // Check if we've been silent for 2 seconds
+            const silenceDuration = now - silenceStartTimeRef.current;
+            if (silenceDuration >= SILENCE_DURATION) {
+              console.log('⏱️ 2 seconds of silence detected, stopping recording...');
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                mediaRecorderRef.current.stop();
+              }
+              return; // Stop checking
+            }
+          }
+        } else {
+          // Sound detected, reset silence timer
+          if (silenceStartTimeRef.current !== null) {
+            console.log('🔊 Sound detected, resetting silence timer');
+            silenceStartTimeRef.current = null;
+          }
+        }
+        
+        // Continue monitoring if still recording
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          silenceDetectionRef.current = requestAnimationFrame(detectSilence);
+        }
+      };
+      
+      // Start silence detection
+      silenceDetectionRef.current = requestAnimationFrame(detectSilence);
     } catch (error) {
       console.error('❌ Error accessing microphone:', error);
       console.error('Error name:', error.name);
@@ -177,8 +255,8 @@ function Chat({ onPageChange, wsRef }) {
 
   // Listen for wake word detection and other messages from backend via WebSocket
   useEffect(() => {
-    const ws = wsRef?.current;
-    if (!ws) return;
+    let timeoutId = null;
+    let cleanup = null;
 
     const handleWebSocketMessage = (event) => {
       try {
@@ -188,6 +266,7 @@ function Chat({ onPageChange, wsRef }) {
         if (data.type === 'connection_established') {
           console.log('✅', data.message);
           setIsListeningActive(true);
+          setVoiceAvailable(true);
         } else if (data.type === 'wake_word_detected') {
           console.log('✅ Wake word detected from backend:', data.message);
           
@@ -220,18 +299,69 @@ function Chat({ onPageChange, wsRef }) {
       }
     };
 
-    ws.addEventListener('message', handleWebSocketMessage);
-    
-    // Set listening as active (backend is always listening)
-    setIsListeningActive(true);
-    console.log('🎤 Listening for wake word via backend (pvporcupine)...');
-    
+    const setupWebSocket = () => {
+      const ws = wsRef?.current;
+      if (!ws) {
+        // WebSocket not ready yet, retry after a short delay
+        timeoutId = setTimeout(setupWebSocket, 100);
+        return;
+      }
+
+      // Check if WebSocket is already open
+      if (ws.readyState === WebSocket.OPEN) {
+        console.log('✅ WebSocket already open, setting up message handler');
+        ws.addEventListener('message', handleWebSocketMessage);
+        setIsListeningActive(true);
+        setVoiceAvailable(true);
+        cleanup = () => {
+          ws.removeEventListener('message', handleWebSocketMessage);
+        };
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        console.log('🔄 WebSocket connecting, waiting...');
+        // Wait for connection
+        const onOpen = () => {
+          console.log('✅ WebSocket opened, setting up message handler');
+          ws.addEventListener('message', handleWebSocketMessage);
+          setIsListeningActive(true);
+          setVoiceAvailable(true);
+          cleanup = () => {
+            ws.removeEventListener('message', handleWebSocketMessage);
+            ws.removeEventListener('open', onOpen);
+          };
+        };
+        ws.addEventListener('open', onOpen, { once: true });
+      } else {
+        // WebSocket not ready, retry
+        console.log('⚠️ WebSocket not ready, state:', ws.readyState);
+        timeoutId = setTimeout(setupWebSocket, 100);
+      }
+    };
+
+    setupWebSocket();
+
     return () => {
-      ws.removeEventListener('message', handleWebSocketMessage);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (cleanup) {
+        cleanup();
+      }
     };
   }, [wsRef, startRecording]);
 
   const stopRecording = () => {
+    // Clean up silence detection
+    if (silenceDetectionRef.current) {
+      cancelAnimationFrame(silenceDetectionRef.current);
+      silenceDetectionRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    silenceStartTimeRef.current = null;
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -302,6 +432,22 @@ function Chat({ onPageChange, wsRef }) {
   useEffect(() => {
     // Cleanup on unmount
     return () => {
+      // Clean up silence detection
+      if (silenceDetectionRef.current) {
+        cancelAnimationFrame(silenceDetectionRef.current);
+        silenceDetectionRef.current = null;
+      }
+      if (audioContextRef.current) {
+        try {
+          audioContextRef.current.close();
+        } catch (error) {
+          // Ignore errors on cleanup
+        }
+        audioContextRef.current = null;
+      }
+      analyserRef.current = null;
+      silenceStartTimeRef.current = null;
+      
       // Stop media recorder
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         try {
@@ -461,35 +607,33 @@ function Chat({ onPageChange, wsRef }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Voice Status Indicator - Always show when voice is available */}
-      {voiceAvailable && (
-        <div className="border-top mac-divider p-2">
-          <div className="d-flex align-items-center gap-2 small">
-            {isRecording ? (
-              <>
-                <span className="text-danger">
-                  <span className="spinner-border spinner-border-sm me-2" role="status" />
-                  Recording... (speak now)
-                </span>
-                <button
-                  onClick={stopRecording}
-                  className="btn btn-sm btn-outline-danger ms-auto"
-                >
-                  Stop
-                </button>
-              </>
-            ) : isListeningActive ? (
-              <span className="text-info" style={{ fontSize: '0.75rem' }}>
-                🎤 Listening... Say "computer"
+      {/* Voice Status Indicator - Always show */}
+      <div className="border-top mac-divider p-2">
+        <div className="d-flex align-items-center gap-2 small">
+          {isRecording ? (
+            <>
+              <span className="text-danger">
+                <span className="spinner-border spinner-border-sm me-2" role="status" />
+                Recording... (speak now)
               </span>
-            ) : (
-              <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                💬 Voice ready - Say "computer" to activate
-              </span>
-            )}
-          </div>
+              <button
+                onClick={stopRecording}
+                className="btn btn-sm btn-outline-danger ms-auto"
+              >
+                Stop
+              </button>
+            </>
+          ) : isListeningActive ? (
+            <span className="text-info" style={{ fontSize: '0.75rem' }}>
+              🎤 Listening... Say "computer"
+            </span>
+          ) : (
+            <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+              💬 Connecting... (Say "computer" when ready)
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Chat Input */}
       <div className="border-top mac-divider p-3 mt-3">
