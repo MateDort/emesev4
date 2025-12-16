@@ -52,19 +52,57 @@ function Chat({ onPageChange, wsRef }) {
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current) {
-      console.log('Already recording');
+      console.log('⚠️ Already recording, ignoring start request');
+      return;
+    }
+    
+    console.log('🎙️ Starting audio recording...');
+    console.log('📋 Checking MediaRecorder support...');
+    
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error('❌ getUserMedia not supported in this browser');
+      setIsRecording(false);
+      isRecordingRef.current = false;
       return;
     }
     
     isRecordingRef.current = true;
-    console.log('🎙️ Starting audio recording...');
     try {
+      console.log('🎤 Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       console.log('✅ Microphone access granted');
       
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+      // Check MediaRecorder support
+      if (!window.MediaRecorder) {
+        console.error('❌ MediaRecorder not supported in this browser');
+        stream.getTracks().forEach(track => track.stop());
+        setWakeWordDetected(false);
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        return;
+      }
+      
+      console.log('📹 Creating MediaRecorder...');
+      let mediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm;codecs=opus'
+        });
+        console.log('✅ MediaRecorder created successfully');
+      } catch (mimeError) {
+        console.warn('⚠️ WebM codec not supported, trying default...');
+        try {
+          mediaRecorder = new MediaRecorder(stream);
+          console.log('✅ MediaRecorder created with default codec');
+        } catch (defaultError) {
+          console.error('❌ Failed to create MediaRecorder:', defaultError);
+          stream.getTracks().forEach(track => track.stop());
+          setWakeWordDetected(false);
+          setIsRecording(false);
+          isRecordingRef.current = false;
+          return;
+        }
+      }
 
       audioChunksRef.current = [];
 
@@ -118,7 +156,18 @@ function Chat({ onPageChange, wsRef }) {
         }
       }, 8000);
     } catch (error) {
-      console.error('Error accessing microphone:', error);
+      console.error('❌ Error accessing microphone:', error);
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        console.error('❌ Microphone permission denied. Please allow microphone access in your browser settings.');
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        console.error('❌ No microphone found. Please connect a microphone.');
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        console.error('❌ Microphone is already in use by another application.');
+      }
+      
       setWakeWordDetected(false);
       setIsRecording(false);
       isRecordingRef.current = false;
@@ -147,7 +196,13 @@ function Chat({ onPageChange, wsRef }) {
             
             // Start recording immediately
             console.log('🎙️ Starting recording after wake word detection...');
-            startRecording();
+            try {
+              startRecording().catch(error => {
+                console.error('❌ Error starting recording:', error);
+              });
+            } catch (error) {
+              console.error('❌ Error calling startRecording:', error);
+            }
           } else {
             console.log('⚠️ Already recording, ignoring wake word');
           }
@@ -340,9 +395,33 @@ function Chat({ onPageChange, wsRef }) {
       }
       const audioUrl = URL.createObjectURL(audioBlob);
       audioRef.current.src = audioUrl;
-      audioRef.current.play().catch(error => {
-        console.error('Error playing audio:', error);
-      });
+      
+      // Play audio with user interaction handling
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log('✅ Audio playback started');
+          })
+          .catch(error => {
+            // Handle autoplay policy - user interaction required
+            if (error.name === 'NotAllowedError') {
+              console.warn('⚠️ Autoplay blocked - user interaction required. Audio will play on next interaction.');
+              // Try to play on next user interaction
+              const playOnInteraction = () => {
+                audioRef.current.play().catch(e => {
+                  console.error('Error playing audio after interaction:', e);
+                });
+                document.removeEventListener('click', playOnInteraction);
+                document.removeEventListener('keydown', playOnInteraction);
+              };
+              document.addEventListener('click', playOnInteraction, { once: true });
+              document.addEventListener('keydown', playOnInteraction, { once: true });
+            } else {
+              console.error('Error playing audio:', error);
+            }
+          });
+      }
     }
   };
 

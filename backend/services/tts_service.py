@@ -12,10 +12,16 @@ import platform
 
 # Try to import elevenlabs, but make it optional
 try:
-    from elevenlabs import generate, set_api_key, VoiceSettings
+    from elevenlabs import generate, set_api_key
+    try:
+        from elevenlabs.client import ElevenLabs
+        ELEVENLABS_CLIENT_AVAILABLE = True
+    except ImportError:
+        ELEVENLABS_CLIENT_AVAILABLE = False
     ELEVENLABS_AVAILABLE = True
 except ImportError:
     ELEVENLABS_AVAILABLE = False
+    ELEVENLABS_CLIENT_AVAILABLE = False
     print("Warning: elevenlabs package not available. TTS will use local fallback only.")
 
 # Load .env from project root
@@ -28,39 +34,136 @@ class TTSService:
         # Support both ELEVENLABS_API_KEY and ELEVENLABS_API
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY") or os.getenv("ELEVENLABS_API")
         self.use_elevenlabs = bool(self.elevenlabs_api_key and ELEVENLABS_AVAILABLE)
+        
+        # Get voice ID from environment, with fallback to default
+        # Support multiple env var names: ELEVENLABS_VOICE_ID, ELEVENLABS_VOICE, VOICE_ID
+        self.default_voice_id = (
+            os.getenv("ELEVENLABS_VOICE_ID") or 
+            os.getenv("ELEVENLABS_VOICE") or 
+            os.getenv("VOICE_ID") or 
+            "21m00Tcm4TlvDq8ikWAM"  # Default voice
+        )
+        
         if self.use_elevenlabs:
             try:
                 set_api_key(self.elevenlabs_api_key)
+                # Also initialize client if available
+                if ELEVENLABS_CLIENT_AVAILABLE:
+                    self.client = ElevenLabs(api_key=self.elevenlabs_api_key)
+                else:
+                    self.client = None
+                print(f"TTS Service initialized - ElevenLabs: True, Voice ID: {self.default_voice_id}")
             except Exception as e:
                 print(f"Warning: Failed to set ElevenLabs API key: {e}")
                 self.use_elevenlabs = False
-        print(f"TTS Service initialized - ElevenLabs: {self.use_elevenlabs}")
+                self.client = None
+        else:
+            self.client = None
+            print(f"TTS Service initialized - ElevenLabs: False")
     
-    async def synthesize(self, text: str, voice_id: str = "21m00Tcm4TlvDq8ikWAM"):
+    async def synthesize(self, text: str, voice_id: str = None):
         """Synthesize text to speech"""
+        # Use provided voice_id or fall back to default from env
+        if voice_id is None:
+            voice_id = self.default_voice_id
+            
         try:
             if self.use_elevenlabs and ELEVENLABS_AVAILABLE:
-                # Use ElevenLabs - generate() returns a generator, convert to bytes
-                try:
-                    audio_generator = generate(
-                        text=text,
-                        voice=voice_id,
-                        model="eleven_monolingual_v1",
-                        voice_settings=VoiceSettings(
-                            stability=0.5,
-                            similarity_boost=0.75
+                # Try using Client API first (more reliable)
+                if self.client and ELEVENLABS_CLIENT_AVAILABLE:
+                    try:
+                        # Use the Client API which is more reliable
+                        audio_generator = self.client.generate(
+                            text=text,
+                            voice=voice_id,
+                            model="eleven_turbo_v2_5"
                         )
-                    )
-                    # Convert generator to bytes
-                    audio_bytes = b"".join(audio_generator)
-                    if audio_bytes:
-                        return audio_bytes
-                    else:
-                        print("ElevenLabs returned empty audio, falling back to local TTS")
+                    except Exception as e1:
+                        try:
+                            # Try without model
+                            audio_generator = self.client.generate(
+                                text=text,
+                                voice=voice_id
+                            )
+                        except Exception as e2:
+                            # Fallback to direct generate()
+                            audio_generator = None
+                else:
+                    audio_generator = None
+                
+                # Fallback to direct generate() if client not available or failed
+                if audio_generator is None:
+                    try:
+                        # Try newer models available on free tier, fallback to no model (uses default)
+                        try:
+                            # Try eleven_turbo_v2_5 (newer, faster, free tier compatible)
+                            audio_generator = generate(
+                                text=text,
+                                voice=voice_id,
+                                model="eleven_turbo_v2_5"
+                            )
+                        except Exception as e1:
+                            try:
+                                # Fallback to eleven_multilingual_v2
+                                audio_generator = generate(
+                                    text=text,
+                                    voice=voice_id,
+                                    model="eleven_multilingual_v2"
+                                )
+                            except Exception as e2:
+                                # Final fallback: no model parameter (uses account default)
+                                audio_generator = generate(
+                                    text=text,
+                                    voice=voice_id
+                                )
+                    except Exception as e3:
+                        print(f"Failed to create audio generator: {e3}")
                         return await self._local_tts(text)
-                except Exception as e:
-                    print(f"ElevenLabs TTS error: {e}, falling back to local TTS")
+                
+                # Convert generator/iterator to bytes
+                # The generate() function returns a generator that yields bytes chunks
+                audio_chunks = []
+                chunk_count = 0
+                try:
+                    for chunk in audio_generator:
+                        chunk_count += 1
+                        chunk_type = type(chunk).__name__
+                        
+                        # Handle different chunk types
+                        if isinstance(chunk, bytes):
+                            audio_chunks.append(chunk)
+                        elif isinstance(chunk, bytearray):
+                            audio_chunks.append(bytes(chunk))
+                        elif isinstance(chunk, int):
+                            # ElevenLabs sometimes returns integers (byte values) - convert to bytes
+                            audio_chunks.append(bytes([chunk]))
+                        elif isinstance(chunk, (list, tuple)):
+                            # If it's a list/tuple of integers, convert to bytes
+                            try:
+                                audio_chunks.append(bytes(chunk))
+                            except (TypeError, ValueError):
+                                # Skip if conversion fails
+                                if chunk_count <= 3:
+                                    print(f"ElevenLabs chunk {chunk_count}: type={chunk_type}, couldn't convert to bytes")
+                        else:
+                            # Log what we're skipping for debugging
+                            if chunk_count <= 3:  # Only log first few to avoid spam
+                                print(f"ElevenLabs chunk {chunk_count}: type={chunk_type}, value={str(chunk)[:50]}")
+                except Exception as iter_error:
+                    print(f"Error iterating ElevenLabs generator: {iter_error}")
                     return await self._local_tts(text)
+                
+                print(f"ElevenLabs: collected {len(audio_chunks)} audio chunks from {chunk_count} total chunks")
+                
+                # Join all byte chunks
+                if audio_chunks:
+                    audio_bytes = b"".join(audio_chunks)
+                    if audio_bytes:
+                        print(f"ElevenLabs: generated {len(audio_bytes)} bytes of audio")
+                        return audio_bytes
+                
+                print(f"ElevenLabs returned empty or invalid audio ({chunk_count} chunks, {len(audio_chunks)} valid), falling back to local TTS")
+                return await self._local_tts(text)
             else:
                 # Fallback to local TTS
                 return await self._local_tts(text)

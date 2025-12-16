@@ -4,6 +4,7 @@ Routes requests to appropriate agents and handles user communication
 """
 
 import os
+import json
 import traceback
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -182,6 +183,59 @@ Always respond in JSON format with:
                     "data": {"page": "notes"},
                     "tts": True
                 }
+                self._save_chat_history(user_message, response_payload["message"])
+                return response_payload
+            
+            # Weather queries
+            if "weather" in message_lower or "temperature" in message_lower or "how's the weather" in message_lower:
+                import requests
+                try:
+                    # Fetch weather from the API
+                    base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+                    weather_response = requests.get(f"{base_url}/api/weather", timeout=5)
+                    if weather_response.status_code == 200:
+                        weather_data = weather_response.json().get("weather", {})
+                        location = weather_data.get("location", "Marietta, GA")
+                        temperature = weather_data.get("temperature", "N/A")
+                        description = weather_data.get("description", "Current weather conditions")
+                        
+                        # Format response with title and answer
+                        response_payload = {
+                            "message": json.dumps({
+                                "title": f"{location} / Weather",
+                                "answer": "weather conditions"
+                            }),
+                            "action": "answer",
+                            "data": {
+                                "weather": {
+                                    "location": location,
+                                    "temperature": temperature,
+                                    "description": description
+                                }
+                            },
+                            "tts": True
+                        }
+                    else:
+                        response_payload = {
+                            "message": json.dumps({
+                                "title": "Marietta, GA / Weather",
+                                "answer": "weather conditions"
+                            }),
+                            "action": "answer",
+                            "data": {},
+                            "tts": True
+                        }
+                except Exception as e:
+                    print(f"Error fetching weather: {e}")
+                    response_payload = {
+                        "message": json.dumps({
+                            "title": "Marietta, GA / Weather",
+                            "answer": "weather conditions"
+                        }),
+                        "action": "answer",
+                        "data": {},
+                        "tts": True
+                    }
                 self._save_chat_history(user_message, response_payload["message"])
                 return response_payload
             
