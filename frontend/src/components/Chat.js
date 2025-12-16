@@ -65,7 +65,8 @@ function Chat({ onPageChange, wsRef }) {
     return () => {
       ws.removeEventListener('message', handleIncoming);
     };
-  }, [wsRef?.current]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsRef]);
 
   useEffect(() => {
     scrollToBottom();
