@@ -59,13 +59,51 @@ class MainAgent:
             self.emese_prompt = "You are Emese, an AI assistant."
             self.mate_info = ""
 
-    def _save_chat_history(self, user_message: str, assistant_message: str):
+    def _detect_mood(self, user_message: str) -> str:
+        """Detect mood from user message using LLM"""
+        if not self.llm_available:
+            return None
+        
+        try:
+            mood_prompt = f"""Analyze the emotional tone and mood of the following message. Respond with ONLY one word from this list: happy, sad, anxious, stressed, tired, frustrated, motivated, neutral, excited, calm, demotivated, overwhelmed, confident, uncertain.
+
+Message: "{user_message}"
+
+Respond with just the mood word, nothing else:"""
+            
+            response = self.model.generate_content(mood_prompt)
+            mood = response.text.strip().lower()
+            
+            # Validate mood is in our list
+            valid_moods = ["happy", "sad", "anxious", "stressed", "tired", "frustrated", "motivated", "neutral", "excited", "calm", "demotivated", "overwhelmed", "confident", "uncertain"]
+            if mood in valid_moods:
+                return mood
+            else:
+                # If response doesn't match, try to extract mood from response
+                for valid_mood in valid_moods:
+                    if valid_mood in mood:
+                        return valid_mood
+                return "neutral"  # Default fallback
+        except Exception as e:
+            print(f"Error detecting mood: {e}")
+            return None
+    
+    def _needs_motivation(self, mood: str) -> bool:
+        """Determine if the detected mood indicates the user needs motivation"""
+        if not mood:
+            return False
+        
+        moods_needing_motivation = ["sad", "anxious", "stressed", "tired", "frustrated", "demotivated", "overwhelmed", "uncertain"]
+        return mood in moods_needing_motivation
+    
+    def _save_chat_history(self, user_message: str, assistant_message: str, mood: str = None):
         """Persist chat turns so the frontend can reload previous chats."""
         db = SessionLocal()
         try:
             record = ChatHistory(
                 user_message=user_message,
                 assistant_message=assistant_message,
+                mood=mood,
             )
             db.add(record)
             db.commit()
@@ -115,6 +153,8 @@ When Máté asks a question, answer as the version of him he is building:
 - Honest but kind
 - Always aligned with long-term goals
 
+Your job is to say what Máté would genuinely do if he was acting as the person he wants to be.  answering technical questions and workout plans. Think in an innovative way and don't just say yes or agree with Máté but support him, challange him when needed.
+
 Emese personality:
 - Nationality: British
 - Likes to joke but never disrespectful
@@ -127,7 +167,6 @@ CRITICAL: You have access to the previous conversation history shown below. You 
 - If Máté refers to something mentioned earlier, look in the conversation history to find what he's talking about.
 - Always check the conversation history before asking for clarification. Be proactive and helpful in understanding context from previous messages.
 - When Máté asks you to modify something you said earlier (like changing a word in a story, editing text, etc.), find that content in the conversation history, make the requested change, and respond with the modified version. Don't ask where to make the change - just do it based on the context.
-- Example: If you previously wrote a story with "banana" and Máté says "change the banana to apple", respond with the same story but with "apple" instead of "banana".
 
 Available actions:
 - open_page: Open a specific page (home, study, news, morning, notes)
@@ -153,6 +192,9 @@ Always respond in JSON format with:
         db_gen = get_db()
         db = next(db_gen)
         
+        # Detect mood from user input
+        detected_mood = self._detect_mood(user_message)
+        
         try:
             # Check for specific commands
             message_lower = user_message.lower()
@@ -165,7 +207,7 @@ Always respond in JSON format with:
                     "data": {"page": "study"},
                     "tts": True
                 }
-                self._save_chat_history(user_message, response_payload["message"])
+                self._save_chat_history(user_message, response_payload["message"], detected_mood)
                 return response_payload
             
             if "open news" in message_lower or "show news" in message_lower:
@@ -175,7 +217,7 @@ Always respond in JSON format with:
                     "data": {"page": "news"},
                     "tts": True
                 }
-                self._save_chat_history(user_message, response_payload["message"])
+                self._save_chat_history(user_message, response_payload["message"], detected_mood)
                 return response_payload
             
             if "open notes" in message_lower or "show notes" in message_lower:
@@ -185,7 +227,7 @@ Always respond in JSON format with:
                     "data": {"page": "notes"},
                     "tts": True
                 }
-                self._save_chat_history(user_message, response_payload["message"])
+                self._save_chat_history(user_message, response_payload["message"], detected_mood)
                 return response_payload
             
             # Weather queries
@@ -238,7 +280,7 @@ Always respond in JSON format with:
                         "data": {},
                         "tts": True
                     }
-                self._save_chat_history(user_message, response_payload["message"])
+                self._save_chat_history(user_message, response_payload["message"], detected_mood)
                 return response_payload
             
             # Note operations
@@ -252,7 +294,7 @@ Always respond in JSON format with:
                         "data": {},
                         "tts": True
                     }
-                    self._save_chat_history(user_message, response_payload["message"])
+                    self._save_chat_history(user_message, response_payload["message"], detected_mood)
                     return response_payload
                 
                 # Extract title from first line if it looks like a title
@@ -270,7 +312,7 @@ Always respond in JSON format with:
                     "data": {"note_id": note.id},
                     "tts": True
                 }
-                self._save_chat_history(user_message, response_payload["message"])
+                self._save_chat_history(user_message, response_payload["message"], detected_mood)
                 return response_payload
             
             # Reminder operations
@@ -293,7 +335,7 @@ Always respond in JSON format with:
                             "data": {"reminder_id": reminder.id},
                             "tts": True
                         }
-                    self._save_chat_history(user_message, response_payload["message"])
+                    self._save_chat_history(user_message, response_payload["message"], detected_mood)
                     return response_payload
                 except Exception as e:
                     print(f"Error creating reminder: {e}\n{traceback.format_exc()}")
@@ -303,7 +345,7 @@ Always respond in JSON format with:
                         "data": {},
                         "tts": True
                     }
-                    self._save_chat_history(user_message, response_payload["message"])
+                    self._save_chat_history(user_message, response_payload["message"], detected_mood)
                     return response_payload
             
             # Use LLM for general conversation and routing
@@ -314,7 +356,7 @@ Always respond in JSON format with:
                     "data": {},
                     "tts": False
                 }
-                self._save_chat_history(user_message, response_payload["message"])
+                self._save_chat_history(user_message, response_payload["message"], detected_mood)
                 return response_payload
             
             # Get recent chat history for context
@@ -362,7 +404,16 @@ Always respond in JSON format with:
                     
                     parsed_response = json.loads(response_text)
                     if isinstance(parsed_response, dict) and parsed_response.get("message"):
-                        self._save_chat_history(user_message, parsed_response["message"])
+                        # Check if mood indicates need for motivation
+                        if self._needs_motivation(detected_mood):
+                            motivation_link = "https://www.youtube.com/watch?v=UAZJC-yirR0&t=913s"
+                            original_message = parsed_response["message"]
+                            motivation_text = f"\n\nSir, I sense you might need a bit of motivation. Here's something that might help: {motivation_link}"
+                            parsed_response["message"] = original_message + motivation_text
+                            parsed_response["data"] = parsed_response.get("data", {})
+                            parsed_response["data"]["motivation_link"] = motivation_link
+                        
+                        self._save_chat_history(user_message, parsed_response["message"], detected_mood)
                     return parsed_response
                 except:
                     # If not JSON, return as simple message
@@ -372,7 +423,14 @@ Always respond in JSON format with:
                         "data": {},
                         "tts": True
                     }
-                    self._save_chat_history(user_message, response_payload["message"])
+                    
+                    # Check if mood indicates need for motivation
+                    if self._needs_motivation(detected_mood):
+                        motivation_link = "https://www.youtube.com/watch?v=UAZJC-yirR0&t=913s"
+                        response_payload["message"] = response_text + f"\n\nSir, I sense you might need a bit of motivation. Here's something that might help: {motivation_link}"
+                        response_payload["data"]["motivation_link"] = motivation_link
+                    
+                    self._save_chat_history(user_message, response_payload["message"], detected_mood)
                     return response_payload
             except Exception as e:
                 response_payload = {
@@ -381,7 +439,7 @@ Always respond in JSON format with:
                     "data": {},
                     "tts": False
                 }
-                self._save_chat_history(user_message, response_payload["message"])
+                self._save_chat_history(user_message, response_payload["message"], detected_mood)
                 return response_payload
         finally:
             db.close()

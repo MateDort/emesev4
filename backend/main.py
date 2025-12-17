@@ -13,6 +13,18 @@ import os
 import json
 from datetime import datetime
 from pydantic import BaseModel
+try:
+    from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
+except ImportError:
+    # Fallback for different websockets versions
+    try:
+        from websockets import ConnectionClosedError, ConnectionClosedOK
+    except ImportError:
+        # If websockets exceptions aren't available, define dummy classes
+        class ConnectionClosedError(Exception):
+            pass
+        class ConnectionClosedOK(Exception):
+            pass
 
 from agents.main_agent import MainAgent
 from agents.scheduling_agent import SchedulingAgent
@@ -54,6 +66,20 @@ active_connections = []
 wake_word_service = None
 wake_word_event_loop = None
 
+async def safe_send_json(websocket: WebSocket, data: dict):
+    """Safely send JSON data through WebSocket, handling closed connections gracefully"""
+    try:
+        await websocket.send_json(data)
+    except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK) as e:
+        # Connection is closed, remove from active connections if present
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+            automatic_tasks.set_connections(active_connections)
+        raise  # Re-raise to let the caller handle it
+    except Exception as e:
+        # Log other errors but don't crash
+        print(f"Error sending WebSocket message: {e}")
+
 def on_wake_word_detected():
     """Callback when wake word is detected - notify all connected clients"""
     import asyncio
@@ -63,10 +89,13 @@ def on_wake_word_detected():
     async def notify_clients():
         for connection in active_connections.copy():
             try:
-                await connection.send_json({
+                await safe_send_json(connection, {
                     "type": "wake_word_detected",
                     "message": "Wake word 'computer' detected"
                 })
+            except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK):
+                # Connection already closed, continue to next
+                continue
             except Exception as e:
                 print(f"Error sending wake word notification: {e}")
     
@@ -138,11 +167,18 @@ async def websocket_endpoint(websocket: WebSocket):
     automatic_tasks.set_connections(active_connections)
     
     # Send welcome message to confirm connection and listening status
-    await websocket.send_json({
-        "type": "connection_established",
-        "message": "WebSocket connected and listening",
-        "status": "ready"
-    })
+    try:
+        await safe_send_json(websocket, {
+            "type": "connection_established",
+            "message": "WebSocket connected and listening",
+            "status": "ready"
+        })
+    except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK):
+        # Connection closed immediately after accept, clean up and return
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+            automatic_tasks.set_connections(active_connections)
+        return
     
     try:
         while True:
@@ -153,36 +189,45 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Handle chat message
                 user_message = data.get("message", "")
                 response = await main_agent.process_message(user_message)
-                await websocket.send_json({
-                    "type": "chat_response",
-                    "message": response["message"],
-                    "action": response.get("action"),
-                    "data": response.get("data"),
-                    "tts": response.get("tts", False)
-                })
+                try:
+                    await safe_send_json(websocket, {
+                        "type": "chat_response",
+                        "message": response["message"],
+                        "action": response.get("action"),
+                        "data": response.get("data"),
+                        "tts": response.get("tts", False)
+                    })
+                except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK):
+                    break
             
             elif message_type == "voice":
                 # Handle voice input
                 audio_data = data.get("audio")
                 if not audio_data:
-                    await websocket.send_json({
-                        "type": "voice_response",
-                        "transcription": "",
-                        "message": "No audio data received",
-                        "audio": None
-                    })
+                    try:
+                        await safe_send_json(websocket, {
+                            "type": "voice_response",
+                            "transcription": "",
+                            "message": "No audio data received",
+                            "audio": None
+                        })
+                    except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK):
+                        break
                     continue
                 
                 transcription = await voice_service.transcribe(audio_data)
                 
                 # Only process if transcription is valid (not an error message)
                 if transcription.startswith("Error"):
-                    await websocket.send_json({
-                        "type": "voice_response",
-                        "transcription": "",
-                        "message": transcription,
-                        "audio": None
-                    })
+                    try:
+                        await safe_send_json(websocket, {
+                            "type": "voice_response",
+                            "transcription": "",
+                            "message": transcription,
+                            "audio": None
+                        })
+                    except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK):
+                        break
                     continue
                 
                 response = await main_agent.process_message(transcription)
@@ -197,25 +242,37 @@ async def websocket_endpoint(websocket: WebSocket):
                     except Exception as e:
                         print(f"Error generating TTS: {e}")
                 
-                await websocket.send_json({
-                    "type": "voice_response",
-                    "transcription": transcription,
-                    "message": response["message"],
-                    "action": response.get("action"),
-                    "data": response.get("data"),
-                    "audio": audio_response
-                })
+                try:
+                    await safe_send_json(websocket, {
+                        "type": "voice_response",
+                        "transcription": transcription,
+                        "message": response["message"],
+                        "action": response.get("action"),
+                        "data": response.get("data"),
+                        "audio": audio_response
+                    })
+                except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK):
+                    break
             
             elif message_type == "start_recording":
                 # Client is ready to record after wake word detection
-                await websocket.send_json({
-                    "type": "recording_started",
-                    "message": "Recording started - speak now"
-                })
+                try:
+                    await safe_send_json(websocket, {
+                        "type": "recording_started",
+                        "message": "Recording started - speak now"
+                    })
+                except (WebSocketDisconnect, ConnectionClosedError, ConnectionClosedOK):
+                    break
     
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
-        automatic_tasks.set_connections(active_connections)
+        pass  # Normal disconnect, handled below
+    except (ConnectionClosedError, ConnectionClosedOK):
+        pass  # Connection closed, handled below
+    finally:
+        # Clean up connection
+        if websocket in active_connections:
+            active_connections.remove(websocket)
+            automatic_tasks.set_connections(active_connections)
 
 @app.get("/")
 async def root():
@@ -434,12 +491,22 @@ async def chat_history(limit: int = 50, db = Depends(get_db)):
         )
         history = []
         for record in records:
+            # Safely get mood, defaulting to None if column doesn't exist
+            try:
+                mood_value = record.mood
+            except AttributeError:
+                mood_value = None
+            
             history.append({
                 "user": record.user_message,
                 "assistant": record.assistant_message,
+                "mood": mood_value,
                 "timestamp": record.timestamp.isoformat() if record.timestamp else None
             })
         return {"history": history}
+    except Exception as e:
+        print(f"Error retrieving chat history: {e}")
+        return {"history": []}
     finally:
         db.close()
 

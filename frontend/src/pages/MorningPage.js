@@ -10,8 +10,9 @@ function MorningPage() {
   };
 
   const handleMotivation = () => {
-    // Navigate to motivation or handle motivation action
-    console.log('Motivation clicked');
+    // Open motivation YouTube video
+    const motivationLink = "https://www.youtube.com/watch?v=UAZJC-yirR0&t=913s";
+    window.open(motivationLink, '_blank');
   };
 
   return (

@@ -3,7 +3,7 @@ Database setup and configuration
 SQLite database for local storage
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import NullPool
@@ -120,11 +120,37 @@ class ChatHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_message = Column(Text)
     assistant_message = Column(Text)
+    mood = Column(String, nullable=True)  # Detected mood from user input
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+def _migrate_chat_history_mood():
+    """Add mood column to chat_history table if it doesn't exist"""
+    inspector = inspect(engine)
+    columns = [col['name'] for col in inspector.get_columns('chat_history')]
+    
+    if 'mood' not in columns:
+        print("🔄 Migrating database: Adding 'mood' column to chat_history table...")
+        try:
+            with engine.connect() as conn:
+                # SQLite supports TEXT type, which is compatible with String
+                conn.execute(text("ALTER TABLE chat_history ADD COLUMN mood TEXT"))
+                conn.commit()
+            print("✅ Migration complete: 'mood' column added to chat_history table")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not add 'mood' column: {e}")
 
 def init_db():
     """Initialize database and create tables"""
     Base.metadata.create_all(bind=engine)
+    
+    # Run migrations for existing tables
+    try:
+        # Check if chat_history table exists before migrating
+        inspector = inspect(engine)
+        if 'chat_history' in inspector.get_table_names():
+            _migrate_chat_history_mood()
+    except Exception as e:
+        print(f"⚠️ Warning: Could not run migrations: {e}")
 
 def get_db():
     """Get database session"""
