@@ -271,6 +271,11 @@ class AudioLoop:
         # VAD State
         self._is_speaking = False
         self._silence_start_time = None
+        # AI speaking state tracking (to prevent self-interruption)
+        self._ai_is_speaking = False
+        self._ai_speech_end_time = None
+        self._ai_speech_timeout = 3.0  # Seconds of silence after AI speech to consider it finished
+        self._last_output_transcription_time = None  # Track when we last got output transcription
         
         # Initialize ProjectManager
         from project_manager import ProjectManager
@@ -413,6 +418,8 @@ class AudioLoop:
         # VAD Constants
         VAD_THRESHOLD = 800 # Adj based on mic sensitivity (800 is conservative for 16-bit)
         SILENCE_DURATION = 0.5 # Seconds of silence to consider "done speaking"
+        # Add a small delay after AI speech ends before resuming mic input (prevents picking up tail end)
+        AI_SPEECH_COOLDOWN = 0.3 # Seconds to wait after AI stops before accepting mic input
         
         while True:
             if self.paused:
@@ -422,11 +429,49 @@ class AudioLoop:
             try:
                 data = await asyncio.to_thread(self.audio_stream.read, CHUNK_SIZE, **kwargs)
                 
-                # 1. Send Audio
-                if self.out_queue:
-                    await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
+                # Check if AI is currently speaking BEFORE processing audio
+                # This prevents sending AI's own voice back to Gemini (feedback loop)
+                ai_speaking = self._ai_is_speaking
                 
-                # 2. VAD Logic for Video
+                # Also check audio queue for more reliable detection
+                if not ai_speaking and self.audio_in_queue:
+                    try:
+                        if self.audio_in_queue.qsize() > 0:
+                            ai_speaking = True
+                            self._ai_is_speaking = True
+                            self._ai_speech_end_time = None
+                    except:
+                        pass
+                
+                # Check if we're in cooldown period after AI speech ended
+                in_cooldown = False
+                if self._ai_speech_end_time and not ai_speaking:
+                    time_since_end = time.time() - self._ai_speech_end_time
+                    if time_since_end < AI_SPEECH_COOLDOWN:
+                        in_cooldown = True
+                    else:
+                        # Cooldown period expired, clear the timestamp
+                        if self._ai_speech_end_time:
+                            print(f"[ADA DEBUG] [VAD] Cooldown period ended. Resuming full mic input.")
+                            self._ai_speech_end_time = None
+                
+                # CRITICAL FIX: Only send audio to Gemini if AI is NOT speaking
+                # This prevents feedback loop where AI's voice is picked up by mic
+                if not ai_speaking and not in_cooldown:
+                    # 1. Send Audio to Gemini
+                    if self.out_queue:
+                        await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
+                else:
+                    # AI is speaking or in cooldown - skip sending this audio chunk
+                    # This prevents echo feedback
+                    if ai_speaking:
+                        # Still process VAD for state tracking, but don't send audio
+                        pass
+                    else:
+                        # In cooldown - skip entirely
+                        continue
+                
+                # 2. VAD Logic for Video (and state tracking)
                 # rms = audioop.rms(data, 2)
                 # Replacement for audioop.rms(data, 2)
                 count = len(data) // 2
@@ -440,6 +485,11 @@ class AudioLoop:
                 if rms > VAD_THRESHOLD:
                     # Speech Detected
                     self._silence_start_time = None
+                    
+                    # IGNORE VAD if AI is currently speaking (to prevent self-interruption)
+                    if ai_speaking:
+                        # AI is speaking, ignore this input to prevent echo feedback
+                        continue
                     
                     if not self._is_speaking:
                         # NEW Speech Utterance Started
@@ -463,6 +513,33 @@ class AudioLoop:
                             print(f"[ADA DEBUG] [VAD] Silence detected. Resetting speech state.")
                             self._is_speaking = False
                             self._silence_start_time = None
+                    
+                    # Check if AI speech has ended (timeout after silence AND queue empty)
+                    if self._ai_is_speaking:
+                        # Check if audio queue is empty
+                        queue_empty = True
+                        if self.audio_in_queue:
+                            try:
+                                queue_empty = self.audio_in_queue.empty()
+                            except:
+                                pass
+                        
+                        if queue_empty:
+                            # Queue is empty, start timeout
+                            if self._ai_speech_end_time is None:
+                                self._ai_speech_end_time = time.time()
+                            elif time.time() - self._ai_speech_end_time > self._ai_speech_timeout:
+                                # AI speech has ended (queue empty + timeout)
+                                # Mark end time for cooldown period
+                                ai_speech_end_moment = time.time()
+                                print(f"[ADA DEBUG] [VAD] AI speech timeout reached. Starting cooldown period.")
+                                self._ai_is_speaking = False
+                                # Keep _ai_speech_end_time set to track cooldown
+                                self._ai_speech_end_time = ai_speech_end_moment
+                                self._last_output_transcription_time = None  # Clear timestamp
+                        else:
+                            # Queue still has audio, reset timeout
+                            self._ai_speech_end_time = None
 
             except Exception as e:
                 print(f"Error reading audio: {e}")
@@ -646,6 +723,11 @@ class AudioLoop:
                     # 1. Handle Audio Data
                     if data := response.data:
                         self.audio_in_queue.put_nowait(data)
+                        # Mark that AI is speaking when audio data arrives
+                        if not self._ai_is_speaking:
+                            self._ai_is_speaking = True
+                            self._ai_speech_end_time = None  # Reset timeout
+                            print(f"[ADA DEBUG] [VAD] AI started speaking (audio data received)")
                         # NOTE: 'continue' removed here to allow processing transcription/tools in same packet
 
                     # 2. Handle Transcription (User & Model)
@@ -663,8 +745,38 @@ class AudioLoop:
                                     
                                     # Only send if there's new text
                                     if delta:
-                                        # User is speaking, so interrupt model playback!
-                                        self.clear_audio_queue()
+                                        # Check if AI is speaking: flag set OR audio in queue OR recent output transcription
+                                        ai_speaking = self._ai_is_speaking
+                                        
+                                        # Check audio queue
+                                        if not ai_speaking and self.audio_in_queue:
+                                            try:
+                                                queue_size = self.audio_in_queue.qsize()
+                                                if queue_size > 0:
+                                                    ai_speaking = True
+                                                    self._ai_is_speaking = True
+                                                    self._ai_speech_end_time = None
+                                                    print(f"[ADA DEBUG] [VAD] Detected AI speaking via audio queue ({queue_size} chunks)")
+                                            except:
+                                                pass
+                                        
+                                        # Check if we recently received output transcription (within last 2 seconds)
+                                        if not ai_speaking and self._last_output_transcription_time:
+                                            time_since_output = time.time() - self._last_output_transcription_time
+                                            if time_since_output < 2.0:  # Recent output transcription
+                                                ai_speaking = True
+                                                self._ai_is_speaking = True
+                                                self._ai_speech_end_time = None
+                                                print(f"[ADA DEBUG] [VAD] Detected AI speaking via recent output transcription ({time_since_output:.2f}s ago)")
+                                        
+                                        # Only interrupt if AI is NOT speaking (prevent self-interruption)
+                                        if not ai_speaking:
+                                            # User is speaking, so interrupt model playback!
+                                            self.clear_audio_queue()
+                                        else:
+                                            # AI is speaking, ignore this transcription (it's echo)
+                                            print(f"[ADA DEBUG] [VAD] Ignoring input transcription during AI speech (likely echo): '{delta[:50]}...'")
+                                            continue
 
                                         # Send to frontend (Streaming)
                                         if self.on_transcription:
@@ -684,6 +796,12 @@ class AudioLoop:
                         if response.server_content.output_transcription:
                             transcript = response.server_content.output_transcription.text
                             if transcript:
+                                # Mark that AI is speaking
+                                if not self._ai_is_speaking:
+                                    self._ai_is_speaking = True
+                                    self._ai_speech_end_time = None
+                                    print(f"[ADA DEBUG] [VAD] AI started speaking (output transcription received)")
+                                
                                 # Skip if this is an exact duplicate event
                                 if transcript != self._last_output_transcription:
                                     # Calculate delta (Gemini may send cumulative or chunk-based text)
@@ -694,6 +812,11 @@ class AudioLoop:
                                     
                                     # Only send if there's new text
                                     if delta:
+                                        # Reset AI speech timeout when new transcription arrives
+                                        self._ai_speech_end_time = None
+                                        # Track when we received output transcription
+                                        self._last_output_transcription_time = time.time()
+                                        
                                         # Send to frontend (Streaming)
                                         if self.on_transcription:
                                              self.on_transcription({"sender": "ADA", "text": delta})
@@ -1114,6 +1237,11 @@ class AudioLoop:
                 
                 # Turn/Response Loop Finished
                 self.flush_chat()
+                
+                # Don't clear AI speaking flag immediately on turn complete
+                # Let the timeout mechanism handle it after audio queue empties
+                # This prevents race conditions where audio is still playing
+                # The flag will be cleared by the timeout in listen_audio() once queue is empty
 
                 while not self.audio_in_queue.empty():
                     self.audio_in_queue.get_nowait()
