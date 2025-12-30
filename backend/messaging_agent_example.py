@@ -1,6 +1,6 @@
 """
 Example Messaging Agent Implementation
-This is a template for adding SMS/WhatsApp functionality to Emese V2
+This is a template for adding SMS/WhatsApp functionality to TARS V2
 
 To use:
 1. Install: pip install twilio
@@ -208,14 +208,14 @@ if __name__ == "__main__":
         # Test SMS (uncomment to test)
         # success = await agent.send_sms(
         #     to="+1234567890",  # Replace with real number
-        #     message="Test SMS from Emese"
+        #     message="Test SMS from TARS"
         # )
         # print(f"SMS result: {success}")
         
         # Test WhatsApp (uncomment to test)
         # success = await agent.send_whatsapp(
         #     to="+1234567890",  # Replace with real number
-        #     message="Test WhatsApp from Emese"
+        #     message="Test WhatsApp from TARS"
         # )
         # print(f"WhatsApp result: {success}")
         
@@ -226,4 +226,5 @@ if __name__ == "__main__":
         #     print(f"  - From {m['from']}: {m['body'][:50]}")
     
     asyncio.run(test())
+
 

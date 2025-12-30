@@ -2,14 +2,14 @@
 
 ## Problem
 
-The system was picking up its own voice when ADA was speaking, causing:
+The system was picking up its own voice when TARS was speaking, causing:
 - Self-interruption (AI interrupting itself)
 - Laggy/stuttering speech
 - Feedback loop where AI's voice → mic → Gemini → AI's voice (repeated)
 
 ## Root Cause
 
-**Location:** `backend/ada.py` - `listen_audio()` method (line ~432)
+**Location:** `backend/TARS.py` - `listen_audio()` method (line ~432)
 
 The microphone audio was **always** being sent to Gemini, even when the AI was speaking:
 
@@ -34,7 +34,7 @@ if ai_speaking:
 
 ## Solution
 
-**Fixed in:** `backend/ada.py` lines 432-472
+**Fixed in:** `backend/TARS.py` lines 432-472
 
 **Key Changes:**
 
@@ -89,16 +89,16 @@ After the fix, you should experience:
 Watch for these log messages to verify the fix is working:
 
 ```
-[ADA DEBUG] [VAD] AI started speaking (audio data received)
-[ADA DEBUG] [VAD] AI speech timeout reached. Starting cooldown period.
-[ADA DEBUG] [VAD] Cooldown period ended. Resuming full mic input.
+[TARS DEBUG] [VAD] AI started speaking (audio data received)
+[TARS DEBUG] [VAD] AI speech timeout reached. Starting cooldown period.
+[TARS DEBUG] [VAD] Cooldown period ended. Resuming full mic input.
 ```
 
 If you see audio being sent while AI is speaking, the fix may need adjustment.
 
 ## Configuration
 
-You can adjust the cooldown period in `ada.py`:
+You can adjust the cooldown period in `TARS.py`:
 
 ```python
 AI_SPEECH_COOLDOWN = 0.3  # Seconds (default: 0.3)
@@ -131,6 +131,7 @@ AI_SPEECH_COOLDOWN = 0.3  # Seconds (default: 0.3)
    - Check audio queue size detection
 
 4. **Enable debug logging:**
-   - Look for `[ADA DEBUG] [VAD]` messages
+   - Look for `[TARS DEBUG] [VAD]` messages
    - Verify cooldown periods are working
+
 

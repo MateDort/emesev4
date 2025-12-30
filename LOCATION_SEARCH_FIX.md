@@ -5,7 +5,7 @@
 The system includes `google_search` as a built-in Gemini tool:
 
 ```python
-# From backend/ada.py line 183
+# From backend/TARS.py line 183
 tools = [{'google_search': {}}, {"function_declarations": [...]}]
 ```
 
@@ -155,7 +155,7 @@ class LocationAgent:
 
 #### Step 4: Add Tool Definition
 
-In `backend/ada.py`, add:
+In `backend/TARS.py`, add:
 
 ```python
 location_tool = {
@@ -196,7 +196,7 @@ tools = [
 
 #### Step 5: Add Handler
 
-In `backend/ada.py` `receive_audio()` method, add handler:
+In `backend/TARS.py` `receive_audio()` method, add handler:
 
 ```python
 elif fc.name == "calculate_location":
@@ -227,7 +227,7 @@ elif fc.name == "calculate_location":
 
 #### Step 6: Initialize Agent
 
-In `backend/ada.py` `AudioLoop.__init__()`:
+In `backend/TARS.py` `AudioLoop.__init__()`:
 
 ```python
 from location_agent import LocationAgent
@@ -241,13 +241,13 @@ self.location_agent = LocationAgent()
 ### Test Google Search (Current)
 ```
 You: "What's the distance between New York and Los Angeles?"
-ADA: [Uses google_search tool, provides answer from search results]
+TARS: [Uses google_search tool, provides answer from search results]
 ```
 
 ### Test Location Agent (After Setup)
 ```
 You: "Calculate the distance between New York and Los Angeles"
-ADA: [Uses calculate_location tool, gets precise distance from Google Maps API]
+TARS: [Uses calculate_location tool, gets precise distance from Google Maps API]
 ```
 
 ## 💰 Cost Considerations
@@ -297,4 +297,5 @@ ADA: [Uses calculate_location tool, gets precise distance from Google Maps API]
 - **Setup**: Add Maps API key to `.env` and implement Location Agent (optional)
 
 The `google_search` tool is already working - if you need actual location calculations, you'll need to add Google Maps API support as described above.
+
 

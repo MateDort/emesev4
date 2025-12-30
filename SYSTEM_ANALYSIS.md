@@ -1,4 +1,4 @@
-# Emese V2 System Analysis
+# TARS V2 System Analysis
 
 ## 📋 Table of Contents
 1. [System Architecture Overview](#system-architecture-overview)
@@ -16,7 +16,7 @@
 
 **Backend (Python 3.11 + FastAPI)**
 - `server.py` - FastAPI + Socket.IO server (main entry point)
-- `ada.py` - Gemini Live API integration, audio loop, tool orchestration
+- `TARS.py` - Gemini Live API integration, audio loop, tool orchestration
 - `cad_agent.py` - 3D CAD generation using build123d
 - `web_agent.py` - Browser automation using Playwright + Gemini Computer Use
 - `printer_agent.py` - 3D printer discovery, slicing, print job management
@@ -34,7 +34,7 @@
 ### Communication Flow
 
 ```
-User Voice/Text → Frontend → Socket.IO → server.py → ada.py → Gemini API
+User Voice/Text → Frontend → Socket.IO → server.py → TARS.py → Gemini API
                                                               ↓
                                                          Tool Calls
                                                               ↓
@@ -54,13 +54,13 @@ User Voice/Text → Frontend → Socket.IO → server.py → ada.py → Gemini A
 ### 1. **Voice/Text Input**
 - User speaks or types → Frontend captures
 - Sent via Socket.IO `user_input` event to `server.py`
-- `server.py` forwards to `ada.py` AudioLoop session
+- `server.py` forwards to `TARS.py` AudioLoop session
 - Gemini processes with transcription enabled
 
 ### 2. **Tool Call Detection**
 - Gemini analyzes user request
 - Determines which tool(s) to call from available tools list
-- Tools defined in `ada.py` (lines 40-183) and `tools.py`
+- Tools defined in `TARS.py` (lines 40-183) and `tools.py`
 
 ### 3. **Permission Check**
 - System checks `SETTINGS["tool_permissions"]` for the tool
@@ -69,7 +69,7 @@ User Voice/Text → Frontend → Socket.IO → server.py → ada.py → Gemini A
 - Confirmation handled via `on_tool_confirmation` callback
 
 ### 4. **Tool Execution**
-- Tool handler in `ada.py` `receive_audio()` method (lines 808-1202)
+- Tool handler in `TARS.py` `receive_audio()` method (lines 808-1202)
 - Each tool has specific handler:
   - `generate_cad` → `handle_cad_request()` → `cad_agent.generate_prototype()`
   - `run_web_agent` → `handle_web_agent_request()` → `web_agent.run_task()`
@@ -149,7 +149,7 @@ User Voice/Text → Frontend → Socket.IO → server.py → ada.py → Gemini A
 
 ### ⚠️ **Known Issues**
 
-1. **Duplicate Confirmation Logic** (ada.py lines 859-869)
+1. **Duplicate Confirmation Logic** (TARS.py lines 859-869)
    - There's duplicate `if not confirmed:` check
    - Second check is unreachable (dead code)
 
@@ -288,7 +288,7 @@ class EmailAgent:
 
 ### **2. Add Tool Definitions**
 
-In `ada.py`, add tool definitions (around line 183):
+In `TARS.py`, add tool definitions (around line 183):
 
 ```python
 send_email_tool = {
@@ -327,7 +327,7 @@ tools = [{'google_search': {}}, {"function_declarations": [
 
 ### **3. Initialize Agent in AudioLoop**
 
-In `ada.py` `__init__` (around line 258):
+In `TARS.py` `__init__` (around line 258):
 
 ```python
 from email_agent import EmailAgent  # Add import at top
@@ -338,14 +338,14 @@ self.email_agent = EmailAgent()
 
 ### **4. Add Tool Handler**
 
-In `ada.py` `receive_audio()` method, add handler (around line 1202):
+In `TARS.py` `receive_audio()` method, add handler (around line 1202):
 
 ```python
 elif fc.name == "send_email":
     to = fc.args["to"]
     subject = fc.args["subject"]
     body = fc.args["body"]
-    print(f"[ADA DEBUG] [TOOL] Tool Call: 'send_email' to='{to}'")
+    print(f"[TARS DEBUG] [TOOL] Tool Call: 'send_email' to='{to}'")
     
     success = await self.email_agent.send_email(to, subject, body)
     result_msg = f"Email sent to {to}" if success else f"Failed to send email to {to}"
@@ -357,7 +357,7 @@ elif fc.name == "send_email":
 
 elif fc.name == "read_emails":
     limit = fc.args.get("limit", 10)
-    print(f"[ADA DEBUG] [TOOL] Tool Call: 'read_emails' limit={limit}")
+    print(f"[TARS DEBUG] [TOOL] Tool Call: 'read_emails' limit={limit}")
     
     emails = await self.email_agent.read_emails(limit)
     result_msg = f"Found {len(emails)} emails:\n" + "\n".join([
@@ -477,11 +477,12 @@ class MessagingAgent:
 
 The system is well-architected for extensibility. Adding new features follows a consistent pattern:
 1. Create agent module
-2. Define tool in `ada.py`
+2. Define tool in `TARS.py`
 3. Add handler in `receive_audio()`
 4. Initialize in `AudioLoop.__init__`
 5. Add permissions to settings
 6. Update `.env` with credentials
 
-The main entry point for tool execution is `ada.py`'s `receive_audio()` method around line 808, where all tool calls are routed to their respective handlers.
+The main entry point for tool execution is `TARS.py`'s `receive_audio()` method around line 808, where all tool calls are routed to their respective handlers.
+
 

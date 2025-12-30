@@ -34,19 +34,19 @@ with patch.dict('sys.modules', modules_to_patch):
     # Try importing internal modules
     # If pydantic is missing, mock it too (optional)
     try:
-        from cad_agent import CadAgent
+        from cad_agent import CTARSgent
     except ImportError:
         print("Could not import cad_agent directly. Trying to mock pydantic/dotenv if needed.")
         modules_to_patch['pydantic'] = MagicMock()
         modules_to_patch['dotenv'] = MagicMock()
         with patch.dict('sys.modules', modules_to_patch):
-            from cad_agent import CadAgent
+            from cad_agent import CTARSgent
 
 async def verify():
     print("Verifying CAD Iteration Logic...")
     
     # 1. Setup Dummy Agent
-    agent = CadAgent()
+    agent = CTARSgent()
     # Force client mock (in case it wasn't set by __init__ due to patch timing, though it should be)
     agent.client = mock_client_instance
     agent.model = "gemini-test" # Dummy model name
@@ -95,7 +95,7 @@ export_stl(result_part, 'output.stl')
     # 1. Read temp_cad_gen.py
     # 2. Call agent.client.aio.models.generate_content (which returns our new_code)
     # 3. Extract code and overwrite temp_cad_gen.py
-    # 4. Execute temp_cad_gen.py using subprocess (REAL execution in ada_cad_env)
+    # 4. Execute temp_cad_gen.py using subprocess (REAL execution in TARS_cad_env)
     # 5. Return STL
     
     result = await agent.iterate_prototype("make it a cylinder")

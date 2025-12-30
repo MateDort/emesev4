@@ -5,21 +5,21 @@ import pytest
 import asyncio
 import os
 
-from cad_agent import CadAgent
+from cad_agent import CTARSgent
 
 
-class TestCadAgentInit:
-    """Test CadAgent initialization."""
+class TestCTARSgentInit:
+    """Test CTARSgent initialization."""
     
     def test_agent_creation(self):
-        """Test CadAgent can be created."""
-        agent = CadAgent()
+        """Test CTARSgent can be created."""
+        agent = CTARSgent()
         assert agent is not None
         assert hasattr(agent, 'client')
-        print("CadAgent initialized successfully")
+        print("CTARSgent initialized successfully")
     
     def test_agent_with_callbacks(self):
-        """Test CadAgent with thought/status callbacks."""
+        """Test CTARSgent with thought/status callbacks."""
         thoughts = []
         statuses = []
         
@@ -29,7 +29,7 @@ class TestCadAgentInit:
         def on_status(status):
             statuses.append(status)
         
-        agent = CadAgent(on_thought=on_thought, on_status=on_status)
+        agent = CTARSgent(on_thought=on_thought, on_status=on_status)
         assert agent.on_thought is not None
         assert agent.on_status is not None
 
@@ -39,8 +39,8 @@ class TestCadGeneration:
     
     @pytest.fixture
     def agent(self):
-        """Create a CadAgent instance."""
-        return CadAgent()
+        """Create a CTARSgent instance."""
+        return CTARSgent()
     
     @pytest.mark.asyncio
     @pytest.mark.skipif(
@@ -91,7 +91,7 @@ class TestCadIteration:
     )
     async def test_iterate_prototype(self):
         """Test iterating on an existing design."""
-        agent = CadAgent()
+        agent = CTARSgent()
         
         # First check if temp_cad_gen.py exists
         temp_file = os.path.join(
@@ -115,7 +115,7 @@ class TestCadSystemPrompt:
     
     def test_system_prompt_exists(self):
         """Test that system prompt is defined."""
-        agent = CadAgent()
+        agent = CTARSgent()
         # The agent should have a system prompt for Gemini
         assert hasattr(agent, 'system_prompt') or hasattr(agent, 'client')
 

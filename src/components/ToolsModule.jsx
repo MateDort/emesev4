@@ -1,5 +1,5 @@
-import React from 'react';
-import { Mic, MicOff, Settings, Power, Video, VideoOff, Hand, Lightbulb, Printer, Globe, Box } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mic, MicOff, Settings, Power, Video, VideoOff, Hand, Lightbulb, Printer, Globe, Box, Plus, Minus } from 'lucide-react';
 
 const ToolsModule = ({
     isConnected,
@@ -26,10 +26,15 @@ const ToolsModule = ({
     position,
     onMouseDown
 }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [isHovered, setIsHovered] = useState(false);
+
     return (
         <div
             id="tools"
             onMouseDown={onMouseDown}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
             className={`absolute px-6 py-3 transition-all duration-200 
                         backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl rounded-full`}
             style={{
@@ -42,17 +47,7 @@ const ToolsModule = ({
             <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none mix-blend-overlay rounded-full"></div>
 
             <div className="flex justify-center gap-6 relative z-10">
-                {/* Power Button */}
-                <button
-                    onClick={onTogglePower}
-                    className={`p-3 rounded-full border-2 transition-all duration-300 ${isConnected
-                        ? 'border-green-500 bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.3)]'
-                        : 'border-gray-600 bg-gray-600/10 text-gray-500 hover:bg-gray-600/20'
-                        } `}
-                >
-                    <Power size={24} />
-                </button>
-
+                {/* Always visible: Mic, Video, Settings */}
                 {/* Mute Button */}
                 <button
                     onClick={onToggleMute}
@@ -87,60 +82,86 @@ const ToolsModule = ({
                     <Settings size={24} />
                 </button>
 
-                {/* Hand Tracking Toggle */}
-                <button
-                    onClick={onToggleHand}
-                    className={`p-3 rounded-full border-2 transition-all duration-300 ${isHandTrackingEnabled
-                        ? 'border-orange-500 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.3)]'
-                        : 'border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500'
-                        } `}
-                >
-                    <Hand size={24} />
-                </button>
+                {/* Expand/Collapse Button - shows on hover or when expanded */}
+                {(isHovered || isExpanded) && (
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="p-3 rounded-full border-2 border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500 transition-all duration-300"
+                    >
+                        {isExpanded ? <Minus size={24} /> : <Plus size={24} />}
+                    </button>
+                )}
 
-                {/* Kasa Light Control */}
-                <button
-                    onClick={onToggleKasa}
-                    className={`p-3 rounded-full border-2 transition-all duration-300 ${showKasaWindow
-                        ? 'border-yellow-300 bg-yellow-300/10 text-yellow-300 hover:bg-yellow-300/20 shadow-[0_0_15px_rgba(253,224,71,0.3)]'
-                        : 'border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500'
-                        } `}
-                >
-                    <Lightbulb size={24} />
-                </button>
+                {/* Expanded buttons - only show when isExpanded is true */}
+                {isExpanded && (
+                    <>
+                        {/* Power Button */}
+                        <button
+                            onClick={onTogglePower}
+                            className={`p-3 rounded-full border-2 transition-all duration-300 ${isConnected
+                                ? 'border-green-500 bg-green-500/10 text-green-500 hover:bg-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.3)]'
+                                : 'border-gray-600 bg-gray-600/10 text-gray-500 hover:bg-gray-600/20'
+                                } `}
+                        >
+                            <Power size={24} />
+                        </button>
 
-                {/* 3D Printer Control */}
-                <button
-                    onClick={onTogglePrinter}
-                    className={`p-3 rounded-full border-2 transition-all duration-300 ${showPrinterWindow
-                        ? 'border-green-400 bg-green-400/10 text-green-400 hover:bg-green-400/20'
-                        : 'border-cyan-900 text-cyan-700 hover:border-green-500 hover:text-green-500'
-                        } `}
-                >
-                    <Printer size={24} />
-                </button>
+                        {/* Hand Tracking Toggle */}
+                        <button
+                            onClick={onToggleHand}
+                            className={`p-3 rounded-full border-2 transition-all duration-300 ${isHandTrackingEnabled
+                                ? 'border-orange-500 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 shadow-[0_0_15px_rgba(249,115,22,0.3)]'
+                                : 'border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500'
+                                } `}
+                        >
+                            <Hand size={24} />
+                        </button>
 
-                {/* CAD Agent Toggle */}
-                <button
-                    onClick={onToggleCad}
-                    className={`p-3 rounded-full border-2 transition-all duration-300 ${showCadWindow
-                        ? 'border-cyan-400 bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 shadow-[0_0_15px_rgba(34,211,238,0.3)]'
-                        : 'border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500'
-                        } `}
-                >
-                    <Box size={24} />
-                </button>
+                        {/* Kasa Light Control */}
+                        <button
+                            onClick={onToggleKasa}
+                            className={`p-3 rounded-full border-2 transition-all duration-300 ${showKasaWindow
+                                ? 'border-yellow-300 bg-yellow-300/10 text-yellow-300 hover:bg-yellow-300/20 shadow-[0_0_15px_rgba(253,224,71,0.3)]'
+                                : 'border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500'
+                                } `}
+                        >
+                            <Lightbulb size={24} />
+                        </button>
 
-                {/* Web Agent Toggle */}
-                <button
-                    onClick={onToggleBrowser}
-                    className={`p-3 rounded-full border-2 transition-all duration-300 ${showBrowserWindow
-                        ? 'border-blue-400 bg-blue-400/10 text-blue-400 hover:bg-blue-400/20 shadow-[0_0_15px_rgba(96,165,250,0.3)]'
-                        : 'border-cyan-900 text-cyan-700 hover:border-blue-500 hover:text-blue-500'
-                        } `}
-                >
-                    <Globe size={24} />
-                </button>
+                        {/* 3D Printer Control */}
+                        <button
+                            onClick={onTogglePrinter}
+                            className={`p-3 rounded-full border-2 transition-all duration-300 ${showPrinterWindow
+                                ? 'border-green-400 bg-green-400/10 text-green-400 hover:bg-green-400/20'
+                                : 'border-cyan-900 text-cyan-700 hover:border-green-500 hover:text-green-500'
+                                } `}
+                        >
+                            <Printer size={24} />
+                        </button>
+
+                        {/* CAD Agent Toggle */}
+                        <button
+                            onClick={onToggleCad}
+                            className={`p-3 rounded-full border-2 transition-all duration-300 ${showCadWindow
+                                ? 'border-cyan-400 bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 shadow-[0_0_15px_rgba(34,211,238,0.3)]'
+                                : 'border-cyan-900 text-cyan-700 hover:border-cyan-500 hover:text-cyan-500'
+                                } `}
+                        >
+                            <Box size={24} />
+                        </button>
+
+                        {/* Web Agent Toggle */}
+                        <button
+                            onClick={onToggleBrowser}
+                            className={`p-3 rounded-full border-2 transition-all duration-300 ${showBrowserWindow
+                                ? 'border-blue-400 bg-blue-400/10 text-blue-400 hover:bg-blue-400/20 shadow-[0_0_15px_rgba(96,165,250,0.3)]'
+                                : 'border-cyan-900 text-cyan-700 hover:border-blue-500 hover:text-blue-500'
+                                } `}
+                        >
+                            <Globe size={24} />
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     );

@@ -1,4 +1,4 @@
-# Emese V2 Agent System - Complete Guide
+# TARS V2 Agent System - Complete Guide
 
 ## 🎯 How the System Decides Which Agent to Use
 
@@ -24,7 +24,7 @@
 ### Example Tool Definitions
 
 ```python
-# From ada.py
+# From TARS.py
 generate_cad = {
     "name": "generate_cad",
     "description": "Generates a 3D CAD model based on a prompt.",
@@ -73,12 +73,12 @@ run_web_agent = {
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. SERVER (server.py)                                        │
 │    - Receives Socket.IO event                               │
-│    - Forwards to ada.py AudioLoop.session                   │
+│    - Forwards to TARS.py AudioLoop.session                   │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. ADA (ada.py)                                             │
+│ 4. TARS (TARS.py)                                             │
 │    - Sends user input to Gemini Live API                    │
 │    - Gemini processes with all available tools              │
 └────────────────────┬────────────────────────────────────────┘
@@ -94,7 +94,7 @@ run_web_agent = {
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 6. PERMISSION CHECK (ada.py:848)                            │
+│ 6. PERMISSION CHECK (TARS.py:848)                            │
 │    - Checks settings.json tool_permissions                  │
 │    - If True → Request user confirmation                    │
 │    - If False → Auto-execute                                │
@@ -102,7 +102,7 @@ run_web_agent = {
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 7. TOOL HANDLER (ada.py:872-1202)                          │
+│ 7. TOOL HANDLER (TARS.py:872-1202)                          │
 │    - Routes to specific handler based on tool name          │
 │    - Calls appropriate agent method                          │
 └────────────────────┬────────────────────────────────────────┘
@@ -157,7 +157,7 @@ class Agent:
 
 ### 2. **Integration Points**
 
-**In `ada.py`:**
+**In `TARS.py`:**
 - Agent initialized in `AudioLoop.__init__()` (line ~256-259)
 - Tool handler calls agent method (line ~872-1202)
 - Result returned to Gemini
@@ -165,7 +165,7 @@ class Agent:
 **Example:**
 ```python
 # Initialization
-self.cad_agent = CadAgent(on_thought=handle_cad_thought, on_status=handle_cad_status)
+self.cad_agent = CTARSgent(on_thought=handle_cad_thought, on_status=handle_cad_status)
 self.web_agent = WebAgent()
 
 # Tool handler
@@ -418,7 +418,7 @@ When user says "make it taller":
 
 ## 🔍 Tool Routing Logic
 
-All tool routing happens in `ada.py` `receive_audio()` method:
+All tool routing happens in `TARS.py` `receive_audio()` method:
 
 ```python
 # Line 844: Check if tool is in our list
@@ -453,4 +453,5 @@ if fc.name in ["generate_cad", "run_web_agent", ...]:
 5. **CAD Agent**: Uses Gemini to generate build123d code, executes locally to create STL files
 
 The system is designed so **Gemini does the thinking**, and **agents do the doing**!
+
 

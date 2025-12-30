@@ -1,6 +1,6 @@
 """
 Example Email Agent Implementation
-This is a template for adding email functionality to Emese V2
+This is a template for adding email functionality to TARS V2
 
 To use:
 1. Rename this file to email_agent.py
@@ -185,7 +185,7 @@ if __name__ == "__main__":
         # success = await agent.send_email(
         #     to="test@example.com",
         #     subject="Test Email",
-        #     body="This is a test email from Emese"
+        #     body="This is a test email from TARS"
         # )
         # print(f"Send result: {success}")
         
@@ -196,4 +196,5 @@ if __name__ == "__main__":
         #     print(f"  - {e['subject']} from {e['from']}")
     
     asyncio.run(test())
+
 

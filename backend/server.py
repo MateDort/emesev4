@@ -126,12 +126,12 @@ async def startup_event():
 
 @app.get("/status")
 async def status():
-    return {"status": "running", "service": "Emese Backend"}
+    return {"status": "running", "service": "TARS Backend"}
 
 @sio.event
 async def connect(sid, environ):
     print(f"Client connected: {sid}")
-    await sio.emit('status', {'msg': 'Connected to Emese Backend'}, room=sid)
+    await sio.emit('status', {'msg': 'Connected to TARS Backend'}, room=sid)
 
     global authenticator
     
@@ -203,7 +203,7 @@ async def start_audio(sid, data=None):
              loop_task = None
         else:
              print("Audio loop already running. Re-connecting client to session.")
-             await sio.emit('status', {'msg': 'Emese Already Running'})
+             await sio.emit('status', {'msg': 'TARS Already Running'})
              return
 
 
@@ -226,7 +226,7 @@ async def start_audio(sid, data=None):
         
     # Callback to send Transcription data to frontend
     def on_transcription(data):
-        # data = {"sender": "User"|"ADA", "text": "..."}
+        # data = {"sender": "User"|"TARS", "text": "..."}
         asyncio.create_task(sio.emit('transcription', data))
 
     # Callback to send Confirmation Request to frontend
@@ -238,8 +238,8 @@ async def start_audio(sid, data=None):
     # Callback to send CAD status to frontend
     def on_cad_status(status):
         # status can be: 
-        # - a string like "generating" (from ada.py handle_cad_request)
-        # - a dict with {status, attempt, max_attempts, error} (from CadAgent)
+        # - a string like "generating" (from TARS.py handle_cad_request)
+        # - a dict with {status, attempt, max_attempts, error} (from CTARSgent)
         if isinstance(status, dict):
             print(f"Sending CAD Status: {status.get('status')} (attempt {status.get('attempt')}/{status.get('max_attempts')})")
             asyncio.create_task(sio.emit('cad_status', status))
@@ -268,7 +268,7 @@ async def start_audio(sid, data=None):
         print(f"Sending Error to frontend: {msg}")
         asyncio.create_task(sio.emit('error', {'msg': msg}))
 
-    # Initialize ADA
+    # Initialize TARS
     try:
         print(f"Initializing AudioLoop with device_index={device_index}")
         audio_loop = ada.AudioLoop(
@@ -313,8 +313,8 @@ async def start_audio(sid, data=None):
         
         loop_task.add_done_callback(handle_loop_exit)
         
-        print("Emitting 'Emese Started'")
-        await sio.emit('status', {'msg': 'Emese Started'})
+        print("Emitting 'TARS Started'")
+        await sio.emit('status', {'msg': 'TARS Started'})
 
         # Load saved printers
         saved_printers = SETTINGS.get("printers", [])
@@ -333,7 +333,7 @@ async def start_audio(sid, data=None):
         asyncio.create_task(monitor_printers_loop())
         
     except Exception as e:
-        print(f"CRITICAL ERROR STARTING ADA: {e}")
+        print(f"CRITICAL ERROR STARTING TARS: {e}")
         import traceback
         traceback.print_exc()
         await sio.emit('error', {'msg': f"Failed to start: {str(e)}"})
@@ -379,7 +379,7 @@ async def stop_audio(sid):
         audio_loop.stop() 
         print("Stopping Audio Loop")
         audio_loop = None
-        await sio.emit('status', {'msg': 'Emese Stopped'})
+        await sio.emit('status', {'msg': 'TARS Stopped'})
 
 @sio.event
 async def pause_audio(sid):
@@ -717,7 +717,7 @@ async def discover_printers(sid):
             return
         else:
             await sio.emit('printer_list', [])
-            await sio.emit('status', {'msg': "Connect to Emese to enable printer discovery"})
+            await sio.emit('status', {'msg': "Connect to TARS to enable printer discovery"})
             return
         
     try:

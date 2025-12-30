@@ -5,13 +5,13 @@ import sys
 # Add current directory to path so we can import modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from cad_agent import CadAgent
+from cad_agent import CTARSgent
 
 async def main():
-    agent = CadAgent()
+    agent = CTARSgent()
     prompt = "A simple 10x10x10 cube with a 5mm hole in the center."
     
-    print(f"Testing CadAgent with prompt: '{prompt}'")
+    print(f"Testing CTARSgent with prompt: '{prompt}'")
     data = await agent.generate_prototype(prompt)
     
     if data and data.get('format') == 'stl' and data.get('data'):

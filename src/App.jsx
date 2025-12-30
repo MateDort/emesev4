@@ -329,9 +329,9 @@ function App() {
         socket.on('status', (data) => {
             addMessage('System', data.msg);
             // Update status bar based on backend messages
-            if (data.msg === 'Emese Started') {
+            if (data.msg === 'TARS Started') {
                 setStatus('Model Connected');
-            } else if (data.msg === 'Emese Stopped') {
+            } else if (data.msg === 'TARS Stopped') {
                 setStatus('Connected');
             }
         });
@@ -1148,7 +1148,7 @@ function App() {
                 addMessage('System', 'Error reading memory file');
             }
         };
-        reader.readAsText(file);
+        reader.reTARSsText(file);
     };
 
     // handleCancelClose removed - no longer using memory prompt
@@ -1396,12 +1396,6 @@ function App() {
             {/* Top Bar (Draggable) */}
             <div className="z-50 flex items-center justify-between p-2 border-b border-cyan-500/20 bg-black/40 backdrop-blur-md select-none sticky top-0" style={{ WebkitAppRegion: 'drag' }}>
                 <div className="flex items-center gap-4 pl-2">
-                    <h1 className="text-xl font-bold tracking-[0.2em] text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
-                        Emese
-                    </h1>
-                    <div className="text-[10px] text-cyan-700 border border-cyan-900 px-1 rounded">
-                        V2.0.0
-                    </div>
                     {/* FPS Counter */}
                     {isVideoOn && (
                         <div className="text-[10px] text-green-500 border border-green-900 px-1 rounded ml-2">
@@ -1428,27 +1422,33 @@ function App() {
                 <div className="flex-1 flex justify-center mx-4">
                     <TopAudioBar audioData={micAudioData} />
                 </div>
-
-                <div className="flex items-center gap-2 pr-2" style={{ WebkitAppRegion: 'no-drag' }}>
-                    {/* Live Clock */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-cyan-300/70 font-mono px-2">
-                        <Clock size={12} className="text-cyan-500/50" />
-                        <span>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <button onClick={handleMinimize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
-                        <Minus size={18} />
-                    </button>
-                    <button onClick={handleMaximize} className="p-1 hover:bg-cyan-900/50 rounded text-cyan-500 transition-colors">
-                        <div className="w-[14px] h-[14px] border-2 border-current rounded-[2px]" />
-                    </button>
-                    <button onClick={handleCloseRequest} className="p-1 hover:bg-red-900/50 rounded text-red-500 transition-colors">
-                        <X size={18} />
-                    </button>
-                </div>
             </div>
 
             {/* Main Content */}
             <div className="flex-1 relative z-10 flex flex-col items-center justify-center">
+                {/* Date Display - Left Side Top */}
+                <div className="absolute left-8 top-8 pointer-events-none z-30">
+                    <div className="flex flex-col gap-2 text-cyan-400 font-mono">
+                        {/* Date Display */}
+                        <div className="flex flex-col">
+                            <div className="text-[10px] uppercase tracking-wider text-cyan-400 font-mono">
+                                {currentTime.toLocaleDateString('en-US', { month: 'long' })}
+                            </div>
+                            <div className="text-5xl font-bold text-cyan-400 font-mono tracking-tight">
+                                {currentTime.toLocaleDateString('en-US', { day: '2-digit' })}
+                            </div>
+                        </div>
+                        {/* Time Display */}
+                        <div className="text-2xl font-bold">
+                            {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                        </div>
+                        {/* Day Display */}
+                        <div className="text-xs uppercase tracking-wider opacity-70">
+                            {currentTime.toLocaleDateString('en-US', { weekday: 'long' })}
+                        </div>
+                    </div>
+                </div>
+
                 {/* Central Visualizer (AI Audio) */}
                 <div
                     id="visualizer"
